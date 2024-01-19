@@ -1,33 +1,18 @@
-import http.server
-import socketserver
+from flask import Flask, jsonify
 import os
 
+app = Flask(__name__)
 PORT = 5000
 server_id = os.environ.get('SERVER_ID', 'Unknown')
 
-class MyHandler(http.server.SimpleHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == '/home':
-            self.handle_home()
-        elif self.path == '/heartbeat':
-            self.handle_heartbeat()
-        else:
-            super().do_GET()
+@app.route('/home', methods=['GET'])
+def home():
+    message = f"Hello from Server: {server_id}"
+    return jsonify(message=message, status="successful"), 200
 
-    def handle_home(self):
-        message = f"Hello from Server: {server_id}"
-        self.send_response(200)
-        self.send_header('Content-type', 'application/json')
-        self.end_headers()
-        response = f'{{ "message": "{message}", "status": "successful" }}'
-        self.wfile.write(response.encode())
-
-    def handle_heartbeat(self):
-        self.send_response(200)
-        self.send_header('Content-type', 'text/plain')
-        self.end_headers()
+@app.route('/heartbeat', methods=['GET'])
+def heartbeat():
+    return '', 200
 
 if __name__ == '__main__':
-    with socketserver.TCPServer(("", PORT), MyHandler) as httpd:
-        print(f"Serving on port {PORT} as Server: {server_id}")
-        httpd.serve_forever()
+    app.run(debug=True, host='0.0.0.0', port=PORT)
