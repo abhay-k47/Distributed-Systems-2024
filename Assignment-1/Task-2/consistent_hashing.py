@@ -28,6 +28,7 @@ class ConsistentHashMap:
     def linear_probe(self, hashValue) -> int:
         while self.slot_to_server[hashValue] != -1:
             hashValue = (hashValue+1)%self.nslots
+        return hashValue
     
     def quadratic_probe(self, hashValue) -> int:
         i = 1
@@ -37,14 +38,13 @@ class ConsistentHashMap:
         return hashValue
 
     def addServer(self, serverId) -> None:
+        serverSlots = []
         for virtualId in range(self.nvirtual):
             hashValue = self.vserverHashfn(serverId, virtualId)
             hashValue = self.probe(hashValue)
             self.slot_to_server[hashValue] = serverId
-            if serverId not in self.server_to_slots:
-                self.server_to_slots[serverId] = []
-            self.server_to_slots[serverId].append(hashValue)
-
+            serverSlots.append(hashValue)
+        self.server_to_slots[serverId] = serverSlots
 
     def removeServer(self, serverId) -> None:
         if serverId not in self.server_to_slots:
@@ -54,8 +54,8 @@ class ConsistentHashMap:
         del self.server_to_slots[serverId]
 
     def getServer(self, requestId) -> int:
-        if len(self.slot_to_server) == 0:
-            return None
+        if len(self.server_to_slots) == 0:
+            return -1
         hashValue = self.requestHashfn(requestId)
         while self.slot_to_server[hashValue] == -1:
             hashValue = (hashValue+1)%self.nslots
