@@ -18,4 +18,4 @@
     - Total number of slots in the consistent hash map (#slots) = 512
     - Number of virtual servers for each server container (K) = $log$(512) = 9
     - Hash function for request mapping H($i$) = $i^2 + 2i + 17$
-    - Hash function for virtual server mapping Φ($i$, $j$) = $i^2 + j^2 + 2j + 25$
+    - Hash function for virtual server mapping $Φ$($i$, $j$) = $i^2 + j^2 + 2j + 25$
