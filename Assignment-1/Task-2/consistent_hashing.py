@@ -16,7 +16,7 @@ class ConsistentHashMap:
         elif probing == 'quadratic':
             self.probe = self.quadratic_probe
 
-        self.slot_to_server = {}
+        self.slot_to_server = [-1]*self.nslots
         self.server_to_slots = {}
     
     def default_requestHashfn(self, requestId) -> int:
@@ -26,13 +26,12 @@ class ConsistentHashMap:
         return (serverId*serverId+virtualId*virtualId+2*virtualId+25)%self.nslots
     
     def linear_probe(self, hashValue) -> int:
-        while hashValue in self.slot_to_server:
+        while self.slot_to_server[hashValue] != -1:
             hashValue = (hashValue+1)%self.nslots
-        return hashValue
     
     def quadratic_probe(self, hashValue) -> int:
         i = 1
-        while hashValue in self.slot_to_server:
+        while self.slot_to_server[hashValue] != -1:
             hashValue = (hashValue+i*i)%self.nslots
             i += 1
         return hashValue
@@ -50,15 +49,15 @@ class ConsistentHashMap:
     def removeServer(self, serverId) -> None:
         if serverId not in self.server_to_slots:
             return
-        for hashValue in self.server_to_slots[serverId]:
-            del self.slot_to_server[hashValue]
+        for slot in self.server_to_slots[serverId]:
+            self.slot_to_server[slot] = -1
         del self.server_to_slots[serverId]
 
     def getServer(self, requestId) -> int:
         if len(self.slot_to_server) == 0:
             return None
         hashValue = self.requestHashfn(requestId)
-        while hashValue not in self.slot_to_server:
+        while self.slot_to_server[hashValue] == -1:
             hashValue = (hashValue+1)%self.nslots
         return self.slot_to_server[hashValue]
 
@@ -66,13 +65,14 @@ class ConsistentHashMap:
 # testing purposes
 # if __name__ == '__main__':
 
+#     import random
 #     cMap = ConsistentHashMap(nservers=3, nslots=512, nvirtual=9, probing='quadratic')
 #     for i in range(3):
 #         cMap.addServer(i)
 
 #     a = [0, 0, 0]
 #     for i in range(512):
-#         a[cMap.getServer(i)] += 1
+#         a[cMap.getServer(random.randint(1000000, 9999999))] += 1
 
 #     print(a)
 
