@@ -20,7 +20,7 @@
     - Hash function for request mapping H($i$) = $i^2 + 2i + 17$
     - Hash function for virtual server mapping $Φ$($i$, $j$) = $i^2 + j^2 + 2j + 25$
 
-## Task - 3
+## Task - 3: Load Balancer
 
 - Run `docker-compose up` from `Assignment-1` directory to run 3 server containers and a load balancer container
 - Load balancer is exposed on port 5000
