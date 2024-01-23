@@ -6,9 +6,9 @@ import logging
 
 app = Quart(__name__)
 PORT = 5000
-currServer = 0
+currServer = 3
 serverList = ["server1", "server2", "server3"]
-nservers = 0
+nservers = 3
 logging.basicConfig(level=logging.DEBUG)
 
 def spawn_server():
