@@ -1,2 +1,44 @@
 version: "3.9"
 services:
+  server1:
+    build: ./Task-1/
+    image: server
+    container_name: server1
+    networks:
+      - net1
+    environment:
+      - SERVER_ID=server1
+  server2:
+    build: ./Task-1/
+    image: server
+    container_name: server2
+    networks:
+      - net1
+    environment:
+      - SERVER_ID=server2
+  server3:
+    build: ./Task-1/
+    image: server
+    container_name: server3
+    networks:
+      - net1
+    environment:
+      - SERVER_ID=server3
+  lb:
+    build: ./Task-3/
+    image: lb
+    container_name: lb
+    ports:
+      - "5000:5000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    privileged: true
+    networks:
+      - net1
+    depends_on:
+      - server1
+      - server2
+      - server3
+networks:
+  net1:
+    driver: bridge

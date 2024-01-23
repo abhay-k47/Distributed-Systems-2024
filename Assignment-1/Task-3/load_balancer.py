@@ -7,12 +7,22 @@ import logging
 app = Quart(__name__)
 PORT = 5000
 currServer = 0
-serverList = ['localhost']
+serverList = ["server1", "server2", "server3"]
 nservers = 0
 logging.basicConfig(level=logging.DEBUG)
 
 def spawn_server():
-    pass
+    containerName = f"server{currServer+1}"
+    nservers += 1
+    currServer += 1
+    res = os.popen(f"sudo docker run --name {containerName} --network net1 -e SERVER_ID={containerName} -d server").read()
+    if res == "":
+        app.logger.error(f"Error while spawning {containerName}")
+        return False
+    else:
+        app.logger.info(f"Spawned {containerName}")
+        serverList.append(containerName)
+        return True
 
 async def check_heartbeat(serverName):
     try:
@@ -34,13 +44,18 @@ async def periodic_heatbeat_check(interval=1):
         results = await asyncio.gather(*tasks)
         for i in range(len(results)):
             if results[i] == False:
+                app.logger.error(f"Server {serverList[i]} is down")
                 del serverList[i]
+                nservers -= 1
                 spawn_server()
         await asyncio.sleep(interval)
 
 @app.route('/rep', methods=['GET'])
 def replicas_list():
-    message = f"List of replicas: {serverList}"
+    message = {
+        "N": nservers,
+        "replicas": serverList
+    }
     return jsonify(message=message, status="successful"), 200
 
 @app.route('/<path:path>', methods=['GET'])
