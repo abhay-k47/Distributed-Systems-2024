@@ -33,20 +33,7 @@ def spawn_server(serverName=None):
         id_to_server[serverId] = serverName
         nservers += 1
         return True
-
-async def check_heartbeat(serverName):
-    try:
-        app.logger.info(f"Checking heartbeat of {serverName}")
-        async with aiohttp.ClientSession() as client_session:
-            async with client_session.get(f'http://{serverName}:5000/heartbeat') as resp:
-                if resp.status == 200:
-                    return True
-                else:
-                    return False       
-    except Exception as e:
-        app.logger.error(f"Error while checking heartbeat of {serverName}: {e}")
-        return False
-
+    
 async def periodic_heatbeat_check(interval=1):
     app.logger.info("Starting periodic heartbeat check")
     while True:
@@ -64,6 +51,21 @@ async def periodic_heatbeat_check(interval=1):
             spawn_server(serverName)
         await asyncio.sleep(interval)
 
+async def check_heartbeat(serverName):
+    try:
+        app.logger.info(f"Checking heartbeat of {serverName}")
+        async with aiohttp.ClientSession() as client_session:
+            async with client_session.get(f'http://{serverName}:5000/heartbeat') as resp:
+                if resp.status == 200:
+                    return True
+                else:
+                    return False       
+    except Exception as e:
+        app.logger.error(f"Error while checking heartbeat of {serverName}: {e}")
+        return False
+
+
+
 @app.route('/rep', methods=['GET'])
 def replicas_list():
     message = {
@@ -71,21 +73,6 @@ def replicas_list():
         "replicas": list(server_to_id.keys())
     }
     return jsonify(message=message, status="successful"), 200
-
-@app.route('/<path:path>', methods=['GET'])
-async def route_to_server(path):
-    serverId = map.getServer(random.randint(100000, 999999))
-    serverName = id_to_server[serverId]
-    try:
-        async with aiohttp.ClientSession() as client_session:
-            async with client_session.get(f'http://{serverName}:5000/{path}') as resp:
-                content = await resp.read()
-                if resp.status != 404:
-                    return Response(content, status=resp.status, headers=dict(resp.headers))
-                else: 
-                    return {"message": f"{content} /{path} endpoint does not exist in server replicas", "status": "failure"}, 400
-    except Exception as e:
-        return {"message": f"{str(e)} Error in handling request", "status": "failure"}, 400
 
 @app.route('/add', methods=['POST'])
 def add_container(payload):
@@ -105,21 +92,37 @@ def add_container(payload):
         return jsonify(message=f"<ERROR> Couldn't add server", status="failure"), 400
     return replicas_list
 
+@app.route('/<path:path>', methods=['GET'])
+async def route_to_server(path):
+    serverId = map.getServer(random.randint(100000, 999999))
+    serverName = id_to_server[serverId]
+    try:
+        async with aiohttp.ClientSession() as client_session:
+            async with client_session.get(f'http://{serverName}:5000/{path}') as resp:
+                content = await resp.read()
+                if resp.status != 404:
+                    return Response(content, status=resp.status, headers=dict(resp.headers))
+                else: 
+                    return {"message": f"{content} /{path} endpoint does not exist in server replicas", "status": "failure"}, 400
+    except Exception as e:
+        return {"message": f"{str(e)} Error in handling request", "status": "failure"}, 400
+
+
+
 @app.route('/rm', methods=['DELETE'])
 def remove_container():
     pass
+  
+    
+@app.after_serving
+async def cleanup():
+    app.logger.info("Stopping the load balancer")
 
 @app.before_serving
 async def startup():
     app.logger.info("Starting the load balancer")
     loop = asyncio.get_event_loop()
     loop.create_task(periodic_heatbeat_check())
-        
-    
-    
-@app.after_serving
-async def cleanup():
-    app.logger.info("Stopping the load balancer")
 
 if __name__ == '__main__':
     for i in range(1,4):
