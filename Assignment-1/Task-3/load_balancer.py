@@ -89,8 +89,8 @@ def add_container(payload=None):
         if serverName not in server_to_id:
             spawn_server(serverName=serverName)
     if nservers == prev_count : 
-        return jsonify(message=f"<ERROR> Couldn't add server", status="failure"), 400
-    return replicas_list
+        return jsonify(message=f"<ERROR> Couldn't add any server", status="failure"), 400
+    return replicas_list()
 
 @app.route('/<path:path>', methods=['GET'])
 async def route_to_server(path):
@@ -108,25 +108,43 @@ async def route_to_server(path):
         return {"message": f"{str(e)} Error in handling request", "status": "failure"}, 400
 
 
+def remove_container(hostname):
+    try:
+        nservers -= 1
+        serverId = server_to_id[hostname]
+        map.removeServer(serverId=serverId)
+        server_to_id.pop(hostname)
+        id_to_server.pop(serverId)
+        os.system(f"sudo docker stop {hostname} && sudo docker rm {hostname}")
+    except Exception as e:
+        app.logger.error(f"<ERROR> {e} occurred while removing hostname={hostname}")
+        raise e 
+    app.logger.info(f"Server with hostname={hostname} removed successfully")
 
 @app.route('/rm', methods=['DELETE'])
-def remove_container(payload=None):
-    
+def remove_containers(payload=None):
+
     if payload is None or payload["n"] is None or payload["hostnames"] is None : 
         return jsonify(message=f"<ERROR> payload doesn't have 'n' or 'hostnames' field", status="failure"), 400
     if len(payload["hostnames"]) > payload["n"] : 
         return jsonify(message=f"<ERROR> Length of hostname list is more than removable instances", status="failure"), 400
     prev_count = nservers
     random_cnt = payload["n"] - len(payload["hostnames"])
-    for hostname in payload["hostnames"]:
-        if hostname not in server_to_id:
-            app.logger.error(f"<ERROR> {hostname} is not a valid hostname")
-        else:
-            nservers-=1
-            serverId = server_to_id["hostname"]
-            map.removeServer(serverId=serverId)
-            server_to_id.pop(hostname)
-            id_to_server.pop(serverId)
+    try:
+        for hostname in payload["hostnames"]:
+            if hostname not in server_to_id:
+                app.logger.error(f"<ERROR> {hostname} is not a valid hostname")
+            else:
+                remove_container(hostname=hostname)
+        if random_cnt > 0 :
+            remove_keys = random.sample(list(server_to_id.keys()), random_cnt)
+            for hostname in remove_keys:
+                remove_container(hostname=hostname)
+    except Exception as e:
+        return jsonify(message=f"<ERROR> {e} occurred while removing", status="failure"), 400
+    if nservers == prev_count : 
+        return jsonify(message=f"<ERROR> Couldn't remove any server", status="failure"), 400
+    return replicas_list()
 
 @app.before_serving
 async def startup():
