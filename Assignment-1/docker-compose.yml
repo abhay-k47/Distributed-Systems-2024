@@ -1,11 +1,17 @@
 version: "3.9"
+networks:
+  net1:
+    name: net1
+    driver: bridge
 services:
   server1:
     build: ./Task-1/
     image: server
     container_name: server1
     networks:
-      - net1
+      net1:
+        aliases:
+          - server1
     environment:
       - SERVER_ID=1
   server2:
@@ -13,7 +19,9 @@ services:
     image: server
     container_name: server2
     networks:
-      - net1
+      net1:
+        aliases:
+          - server2
     environment:
       - SERVER_ID=2
   server3:
@@ -21,7 +29,9 @@ services:
     image: server
     container_name: server3
     networks:
-      - net1
+      net1:
+        aliases:
+          - server3
     environment:
       - SERVER_ID=3
   lb:
@@ -34,11 +44,10 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     privileged: true
     networks:
-      - net1
+      net1:
+        aliases:
+          - lb
     depends_on:
       - server1
       - server2
       - server3
-networks:
-  net1:
-    driver: bridge

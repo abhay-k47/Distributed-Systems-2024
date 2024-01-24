@@ -4,6 +4,7 @@ import asyncio
 import aiohttp
 import os
 import logging
+import copy
 from consistent_hashing import ConsistentHashMap
 
 app = Quart(__name__)
@@ -18,8 +19,6 @@ map = ConsistentHashMap()
 def spawn_server(serverName=None):
     global currServer
     global nservers
-    app.logger.info(f"server_to_id:{server_to_id}")
-    app.logger.info(f"currServer:{currServer}")
     serverId = server_to_id.get(serverName)
     if serverId == None:
         currServer += 1
@@ -27,7 +26,7 @@ def spawn_server(serverName=None):
     if serverName == None:
         serverName = f'server{serverId}'
     containerName = serverName
-    res = os.popen(f"sudo docker run --name {containerName} --network net1 -e SERVER_ID={serverId} -d server").read()
+    res = os.popen(f"docker run --name {containerName} --network net1 --network-alias {containerName} -e SERVER_ID={serverId} -d server").read()
     if res == "":
         app.logger.error(f"Error while spawning {containerName}")
         return False
@@ -39,11 +38,13 @@ def spawn_server(serverName=None):
         nservers += 1
         return True
     
-async def periodic_heatbeat_check(interval=1):
+async def periodic_heatbeat_check(interval=2):
+    global nservers
     app.logger.info("Starting periodic heartbeat check")
     while True:
+        server_to_id_temp=copy.deepcopy(server_to_id)
         deadServerList=[]
-        tasks = [check_heartbeat(serverName) for serverName in server_to_id.keys()]
+        tasks = [check_heartbeat(serverName) for serverName in server_to_id_temp.keys()]
         results = await asyncio.gather(*tasks)
         results = zip(server_to_id.keys(),results)
         for serverName,isDown in results:
@@ -59,17 +60,17 @@ async def periodic_heatbeat_check(interval=1):
 async def check_heartbeat(serverName):
     try:
         app.logger.info(f"Checking heartbeat of {serverName}")
-        async with aiohttp.ClientSession() as client_session:
+        async with aiohttp.ClientSession(trust_env=True) as client_session:
             async with client_session.get(f'http://{serverName}:5000/heartbeat') as resp:
                 if resp.status == 200:
                     return True
                 else:
-                    return False       
+                    return False
+    except aiohttp.ClientConnectorError as e:
+        return True
     except Exception as e:
         app.logger.error(f"Error while checking heartbeat of {serverName}: {e}")
         return False
-
-
 
 @app.route('/rep', methods=['GET'])
 def replicas_list():
@@ -82,7 +83,6 @@ def replicas_list():
 @app.route('/add', methods=['POST'])
 async def add_container():
     payload = await request.get_json()
-    app.logger.info(f"Hippo:{payload},currServer:{currServer}")
     if payload is None or payload["n"] is None or payload["hostnames"] is None : 
         return jsonify(message=f"<ERROR> payload doesn't have 'n' or 'hostnames' field", status="failure"), 400
     if len(payload["hostnames"]) > payload["n"] : 
@@ -115,13 +115,14 @@ async def route_to_server(path):
 
 
 def remove_container(hostname):
+    global nservers
     try:
-        nservers -= 1
         serverId = server_to_id[hostname]
         map.removeServer(serverId=serverId)
         server_to_id.pop(hostname)
         id_to_server.pop(serverId)
-        os.system(f"sudo docker stop {hostname} && sudo docker rm {hostname}")
+        os.system(f"docker stop {hostname} && docker rm {hostname}")
+        nservers -= 1
     except Exception as e:
         app.logger.error(f"<ERROR> {e} occurred while removing hostname={hostname}")
         raise e 
@@ -129,20 +130,20 @@ def remove_container(hostname):
 
 @app.route('/rm', methods=['DELETE'])
 async def remove_containers():
+    global nservers
     payload = await request.get_json()
-    app.logger.info(f"Hippo:{payload}")
     if payload is None or payload["n"] is None or payload["hostnames"] is None : 
         return jsonify(message=f"<ERROR> payload doesn't have 'n' or 'hostnames' field", status="failure"), 400
     if len(payload["hostnames"]) > payload["n"] : 
         return jsonify(message=f"<ERROR> Length of hostname list is more than removable instances", status="failure"), 400
+    for hostname in payload["hostnames"]:
+        if hostname not in server_to_id:
+            return jsonify(message=f"<ERROR> {hostname} is not a valid server name", status="failure"), 400
     prev_count = nservers
     random_cnt = payload["n"] - len(payload["hostnames"])
     try:
         for hostname in payload["hostnames"]:
-            if hostname not in server_to_id:
-                app.logger.error(f"<ERROR> {hostname} is not a valid hostname")
-            else:
-                remove_container(hostname=hostname)
+            remove_container(hostname=hostname)
         if random_cnt > 0 :
             remove_keys = random.sample(list(server_to_id.keys()), random_cnt)
             for hostname in remove_keys:

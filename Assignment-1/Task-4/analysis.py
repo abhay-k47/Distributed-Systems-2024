@@ -2,7 +2,7 @@ import aiohttp
 import asyncio
 import matplotlib.pyplot as plt
 
-NUM_REQUESTS = 100
+NUM_REQUESTS = 10000
 
 async def send_request(server_url):
     async with aiohttp.ClientSession() as session:
@@ -40,7 +40,7 @@ def plot_bar_chart(response_counts, title):
     plt.ylabel('Request Count')
     plt.show()
 
-def plot_line_chart(data, x_label, y_label, title):
+def plot_line_chart(data, x_label, y_label, title, path):
     x_values = list(data.keys())
     y_values = list(data.values())
 
@@ -48,7 +48,7 @@ def plot_line_chart(data, x_label, y_label, title):
     plt.title(title)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
-    plt.show()
+    plt.savefig(path)
 
 def plot_line_chart(data, x_label, y_label, title):
     x_values = list(data.keys())
@@ -64,19 +64,23 @@ async def main():
     # A-1: Launch 10000 async requests on N = 3 server containers
     server_url = 'http://localhost:5000'
     response_counts_a1 = await send_requests(server_url, NUM_REQUESTS)
-    plot_bar_chart(response_counts_a1, 'Experiment A-1: Request Distribution on N=3 Servers')
+    plot_bar_chart(response_counts_a1, 'Experiment A-1: Request Distribution on N=3 Servers', './results/A1.png')
 
     # A-2: Increment N from 2 to 6 and launch 10000 requests on each increment
+    async with aiohttp.ClientSession() as session:
+        async with session.delete(server_url + '/rm', json = {"n": 1, "hostnames": []}) as response:
+            print(await response.read())
     response_counts_a2 = {}
     server_url = f'http://localhost:5000'
     for n in range(2, 7):
-        async with aiohttp.ClientSession() as session:
-            async with session.post(server_url + '/add', json = {"n": 1, "hostnames": [f"S{n}"]}) as response:
-                print(await response.read())
         response_counts = await send_requests(server_url, NUM_REQUESTS)
         average_load = sum(response_counts.values()) / n
         response_counts_a2[n] = average_load
+        async with aiohttp.ClientSession() as session:
+            async with session.post(server_url + '/add', json = {"n": 1, "hostnames": [f"S{n}"]}) as response:
+                print(await response.read())
     plot_line_chart(response_counts_a2, 'Number of Servers (N)', 'Average Load', 'Experiment A-2: Scalability of Load Balancer')
+
 if __name__ == "__main__":
     asyncio.run(main())
 
