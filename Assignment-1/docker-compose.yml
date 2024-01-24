@@ -7,7 +7,7 @@ services:
     networks:
       - net1
     environment:
-      - SERVER_ID=server1
+      - SERVER_ID=1
   server2:
     build: ./Task-1/
     image: server
@@ -15,7 +15,7 @@ services:
     networks:
       - net1
     environment:
-      - SERVER_ID=server2
+      - SERVER_ID=2
   server3:
     build: ./Task-1/
     image: server
@@ -23,7 +23,7 @@ services:
     networks:
       - net1
     environment:
-      - SERVER_ID=server3
+      - SERVER_ID=3
   lb:
     build: ./Task-3/
     image: lb

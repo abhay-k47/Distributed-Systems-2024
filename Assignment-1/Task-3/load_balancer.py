@@ -1,5 +1,5 @@
 import random
-from quart import Quart, jsonify, Response
+from quart import Quart, jsonify, Response, request
 import asyncio
 import aiohttp
 import os
@@ -12,16 +12,21 @@ currServer = 100000
 server_to_id = {}
 id_to_server = {}
 nservers = 0
-requestId = 100000
 logging.basicConfig(level=logging.DEBUG)
 map = ConsistentHashMap()
 
 def spawn_server(serverName=None):
+    global currServer
+    global nservers
+    app.logger.info(f"server_to_id:{server_to_id}")
+    app.logger.info(f"currServer:{currServer}")
     serverId = server_to_id.get(serverName)
     if serverId == None:
         currServer += 1
         serverId = currServer
-    containerName = serverName = serverName | f'server{serverId}'
+    if serverName == None:
+        serverName = f'server{serverId}'
+    containerName = serverName
     res = os.popen(f"sudo docker run --name {containerName} --network net1 -e SERVER_ID={serverId} -d server").read()
     if res == "":
         app.logger.error(f"Error while spawning {containerName}")
@@ -75,8 +80,9 @@ def replicas_list():
     return jsonify(message=message, status="successful"), 200
 
 @app.route('/add', methods=['POST'])
-def add_container(payload=None):
-
+async def add_container():
+    payload = await request.get_json()
+    app.logger.info(f"Hippo:{payload},currServer:{currServer}")
     if payload is None or payload["n"] is None or payload["hostnames"] is None : 
         return jsonify(message=f"<ERROR> payload doesn't have 'n' or 'hostnames' field", status="failure"), 400
     if len(payload["hostnames"]) > payload["n"] : 
@@ -122,8 +128,9 @@ def remove_container(hostname):
     app.logger.info(f"Server with hostname={hostname} removed successfully")
 
 @app.route('/rm', methods=['DELETE'])
-def remove_containers(payload=None):
-
+async def remove_containers():
+    payload = await request.get_json()
+    app.logger.info(f"Hippo:{payload}")
     if payload is None or payload["n"] is None or payload["hostnames"] is None : 
         return jsonify(message=f"<ERROR> payload doesn't have 'n' or 'hostnames' field", status="failure"), 400
     if len(payload["hostnames"]) > payload["n"] : 
