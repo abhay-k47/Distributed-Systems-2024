@@ -89,9 +89,9 @@ async def route_to_server(path):
     return jsonify(message=message, status="successful"), 200
 
 @app.route('/add', methods=['POST'])
-def add_container(payload):
+def add_container(payload=None):
 
-    if payload["n"] is None or payload["hostnames"] is None : 
+    if payload is None or payload["n"] is None or payload["hostnames"] is None : 
         return jsonify(message=f"<ERROR> payload doesn't have 'n' or 'hostnames' field", status="failure"), 400
     if len(payload["hostnames"]) > payload["n"] : 
         return jsonify(message=f"<ERROR> Length of hostname list is more than newly added instances", status="failure"), 400
@@ -102,13 +102,28 @@ def add_container(payload):
             serverName=payload["hostnames"][i]
         if serverName not in server_to_id:
             spawn_server(serverName=serverName)
-    if nservers == prev_count :
+    if nservers == prev_count : 
         return jsonify(message=f"<ERROR> Couldn't add server", status="failure"), 400
     return replicas_list
 
 @app.route('/rm', methods=['DELETE'])
-def remove_container():
-    pass
+def remove_container(payload=None):
+    
+    if payload is None or payload["n"] is None or payload["hostnames"] is None : 
+        return jsonify(message=f"<ERROR> payload doesn't have 'n' or 'hostnames' field", status="failure"), 400
+    if len(payload["hostnames"]) > payload["n"] : 
+        return jsonify(message=f"<ERROR> Length of hostname list is more than removable instances", status="failure"), 400
+    prev_count = nservers
+    random_cnt = payload["n"] - len(payload["hostnames"])
+    for hostname in payload["hostnames"]:
+        if hostname not in server_to_id:
+            app.logger.error(f"<ERROR> {hostname} is not a valid hostname")
+        else:
+            nservers-=1
+            serverId = server_to_id["hostname"]
+            map.removeServer(serverId=serverId)
+            server_to_id.pop(hostname)
+            id_to_server.pop(serverId)
 
 @app.before_serving
 async def startup():
