@@ -2,10 +2,12 @@ import aiohttp
 import asyncio
 import matplotlib.pyplot as plt
 
-NUM_REQUESTS = 1000
+timeout = aiohttp.ClientTimeout(total=900)
+
+NUM_REQUESTS = 10000
 
 async def send_request(server_url):
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.get(server_url + '/home') as response:
             try:
                 if response.status == 200:
@@ -44,6 +46,8 @@ def plot_line_chart(data, x_label, y_label, title, path):
     y_values = list(data.values())
     plt.close()
     plt.plot(x_values, y_values, marker='o')
+    for i, (x, y) in enumerate(zip(x_values, y_values)):
+        plt.text(x, y, f'({x}, {y})', ha='right', va='bottom')  
     plt.title(title)
     plt.xlabel(x_label)
     plt.ylabel(y_label)
@@ -57,7 +61,7 @@ async def main():
     plot_bar_chart(response_counts_a1, 'Experiment A-1: Request Distribution on N=3 Servers', './results/A1.png')
 
     # A-2: Increment N from 2 to 6 and launch 10000 requests on each increment
-    async with aiohttp.ClientSession() as session:
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.delete(server_url + '/rm', json = {"n": 1, "hostnames": []}) as response:
             print(await response.read())
     response_counts_a2 = {}
@@ -66,7 +70,7 @@ async def main():
         response_counts = await send_requests(server_url, NUM_REQUESTS)
         average_load = sum(response_counts.values()) / n
         response_counts_a2[n] = average_load
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(server_url + '/add', json = {"n": 1, "hostnames": []}) as response:
                 print(await response.read())
     plot_line_chart(response_counts_a2, 'Number of Servers (N)', 'Average Load', 'Experiment A-2: Scalability of Load Balancer', './results/A2.png')
