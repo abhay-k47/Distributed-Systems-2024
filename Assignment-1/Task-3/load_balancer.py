@@ -66,8 +66,6 @@ async def check_heartbeat(serverName):
                     return True
                 else:
                     return False
-    except aiohttp.ClientConnectorError as e:
-        return True
     except Exception as e:
         app.logger.error(f"Error while checking heartbeat of {serverName}: {e}")
         return False
