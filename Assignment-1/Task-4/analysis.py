@@ -50,6 +50,16 @@ def plot_line_chart(data, x_label, y_label, title):
     plt.ylabel(y_label)
     plt.show()
 
+def plot_line_chart(data, x_label, y_label, title):
+    x_values = list(data.keys())
+    y_values = list(data.values())
+
+    plt.plot(x_values, y_values, marker='o')
+    plt.title(title)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.show()
+    
 async def main():
     # A-1: Launch 10000 async requests on N = 3 server containers
     server_url = 'http://localhost:5000'
@@ -66,7 +76,7 @@ async def main():
         response_counts = await send_requests(server_url, NUM_REQUESTS)
         average_load = sum(response_counts.values()) / n
         response_counts_a2[n] = average_load
-
+    plot_line_chart(response_counts_a2, 'Number of Servers (N)', 'Average Load', 'Experiment A-2: Scalability of Load Balancer')
 if __name__ == "__main__":
     asyncio.run(main())
 
