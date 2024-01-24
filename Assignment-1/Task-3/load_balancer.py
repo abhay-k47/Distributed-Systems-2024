@@ -26,7 +26,7 @@ def spawn_server(serverName=None):
     if serverName == None:
         serverName = f'server{serverId}'
     containerName = serverName
-    res = os.popen(f"docker run --name {containerName} --network net1 --network-alias {containerName} -e SERVER_ID={serverId} -d server").read()
+    res = os.popen(f"docker run --name {containerName} --network net1 --network-alias {containerName} -e SERVER_ID={containerName} -d server").read()
     if res == "":
         app.logger.error(f"Error while spawning {containerName}")
         return False

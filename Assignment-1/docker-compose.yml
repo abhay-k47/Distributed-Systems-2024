@@ -13,7 +13,7 @@ services:
         aliases:
           - server1
     environment:
-      - SERVER_ID=1
+      - SERVER_ID=server1
   server2:
     build: ./Task-1/
     image: server
@@ -23,7 +23,7 @@ services:
         aliases:
           - server2
     environment:
-      - SERVER_ID=2
+      - SERVER_ID=server2
   server3:
     build: ./Task-1/
     image: server
@@ -33,7 +33,7 @@ services:
         aliases:
           - server3
     environment:
-      - SERVER_ID=3
+      - SERVER_ID=server3
   lb:
     build: ./Task-3/
     image: lb
