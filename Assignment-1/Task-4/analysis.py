@@ -1,11 +1,10 @@
 import aiohttp
 import asyncio
 import matplotlib.pyplot as plt
-from collections import OrderedDict
 
 timeout = aiohttp.ClientTimeout(total=900)
 
-NUM_REQUESTS = 100
+NUM_REQUESTS = 1000
 
 async def send_request(server_url):
     async with aiohttp.ClientSession(timeout=timeout) as session:
@@ -62,27 +61,28 @@ async def main():
     plot_bar_chart(response_counts_a1, 'Experiment A-1: Request Distribution on N=3 Servers', './results/A1.png')
 
     # A-2: Increment N from 2 to 6 and launch 10000 requests on each increment
-    plt.close()
-    plt.xlabel('Servers')
-    plt.ylabel('Load on server')
-    
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.delete(server_url + '/rm', json = {"n": 1, "hostnames": []}) as response:
             print(await response.read())
+    response_counts_a2 = {}
     server_url = f'http://localhost:5000'
-
     for n in range(2, 7):
         response_counts = await send_requests(server_url, NUM_REQUESTS)
-        print(response_counts)
-        response_counts = OrderedDict(sorted(response_counts.items()))
+        average_load = sum(response_counts.values()) / n
+        response_counts_a2[n] = average_load
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(server_url + '/add', json = {"n": 1, "hostnames": []}) as response:
                 print(await response.read())
-        x_values = list(response_counts.keys())
-        y_values = list(response_counts.values())
-        plt.plot(x_values, y_values)
-    plt.title('Experiment A-2: Request Distribution across number of servers')
-    plt.savefig('./results/A2.png')
+    plot_line_chart(response_counts_a2, 'Number of Servers (N)', 'Average Load', 'Experiment A-2: Scalability of Load Balancer', './results/A2.png')
 
 if __name__ == "__main__":
     asyncio.run(main())
+
+
+# plot_line_chart(response_counts_a2, 'Number of Servers (N)', 'Average Load', 'Experiment A-2: Scalability of Load Balancer')
+
+# A-3: Test all endpoints of the load balancer and simulate server failure
+# You need to write code to test all load balancer endpoints and simulate server failure.
+
+# A-4: Modify the hash functions H(i), Φ(i, j) and re-run experiments (A-1) and (A-2)
+# Update your load balancer implementation with modified hash functions and rerun experiments.
