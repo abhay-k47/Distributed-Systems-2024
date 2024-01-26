@@ -51,7 +51,7 @@ Launching 10,000 async requests on 3 servers produced the bar graph given below.
 ### A-2:
 Launching 10,000 async requests on variying servers count(from 2 to 6) yielded the line graph given below.
 From the below graph, we can see that as the number of servers increases, the average number of requests per server decreases.
-![A-2-mean](./Task-4/results/A2-mean.png)
+![A-2-mean](./Task-4/results/A2-mean.png)\
 More interestingly, the standard deviation of the number of requests per server also decreases as the number of servers increases from 2 to 6. This is because of the fact that as the number of servers increases, the number of requests per server becomes more uniform. This tells us that the load balancing is better as the number of servers increases. This is mainly due to to almost uniform distribution of the requests among the servers. The standard deviation of the number of requests per server is given below. 
 ![A-2-err](./Task-4/results/A2-err.png)
 
