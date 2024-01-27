@@ -58,3 +58,15 @@ More interestingly, the standard deviation of the number of requests per server 
 ### A-3:
 All endpoints of the load balancer were tested successfully, and the load balancer distributed incoming requests among the available server instances. It can be verified by running the [analysis.py](./Task-4/analysis.py). When a running server is stopped, the loadbalancer detects it during heartbeat check. When loadbalancer sents a request to `\heartbeat` and if it receives a `ClientConnectionError`, it is assumed that the server is down. Load balancer respawned a new server container and the new server was able to handle the incoming requests just like the old one. The load distribution was even. The distribution can be seen from the bar graph given below.
 ![A-3](./Task-4/results/A3.png)
+
+### A-4:
+Modified hash functions as follows:
+    - Hash function for request mapping H($i$) = $11i^2 + 17i + 23$
+    - Hash function for virtual server mapping $Φ$($i$, $j$) = $23i^2 + 71j^2 + 59j + 301$
+
+Results obtained for A1 using this modified hash function:
+![B-1](./Task-4/results/B1.png)
+
+Results obtained for A2 using this modified hash function:
+![B-2-mean](./Task-4/results/B2-mean.png)\
+
