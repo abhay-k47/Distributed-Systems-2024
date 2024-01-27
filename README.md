@@ -52,6 +52,6 @@ To efficiently distribute the requests coming from the clients, a load balancer 
 ## Contributors
 
 - Abhay Kumar Keshari (20CS10001) [[abhay-k47](https://github.com/abhay-k47)]
-- Morreddigari Likhith Reddy (20CS10039) [[likhnic](https://github.com/likhnic)]
+- Morreddigari Likhith Reddy (20CS10037) [[likhnic](https://github.com/likhnic)]
 - Shivansh Shukla (20CS10057) [[shivansh1102](https://github.com/shivansh1102)]
 - Abhijeet Singh (20CS30001) [[abhijeetsingh13](https://github.com/abhijeetsingh13)]
