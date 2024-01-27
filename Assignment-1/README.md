@@ -60,13 +60,16 @@ All endpoints of the load balancer were tested successfully, and the load balanc
 ![A-3](./Task-4/results/A3.png)
 
 ### A-4:
-Modified hash functions as follows:
+- Modified hash functions as follows:
     - Hash function for request mapping H($i$) = $11i^2 + 17i + 23$
     - Hash function for virtual server mapping $Φ$($i$, $j$) = $23i^2 + 71j^2 + 59j + 301$
 
-Results obtained for A1 using this modified hash function:
+- Results obtained for A1 using this modified hash function:
+
 ![B-1](./Task-4/results/B1.png)
 
-Results obtained for A2 using this modified hash function:
+- Results obtained for A2 using this modified hash function:
+
 ![B-2-mean](./Task-4/results/B2-mean.png)\
 
+![B-2-err](./Task-4/results/B2-err.png)
