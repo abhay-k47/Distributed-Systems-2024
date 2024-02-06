@@ -158,6 +158,12 @@ async def startup():
     loop = asyncio.get_event_loop()
     loop.create_task(periodic_heatbeat_check())
 
+@app.after_serving
+async def cleanup():
+    app.logger.info("Stopping the load balancer")
+    for serverName in server_to_id.keys():
+        os.system(f"docker stop {serverName} && docker rm {serverName}")
+
 if __name__ == '__main__':
     for i in range(1,4):
         currServer += 1

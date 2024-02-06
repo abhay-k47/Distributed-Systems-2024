@@ -8,24 +8,25 @@ timeout = aiohttp.ClientTimeout(total=900)
 
 NUM_REQUESTS = 10000
 
-async def send_request(server_url):
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.get(server_url + '/home') as response:
-            try:
-                if response.status == 200:
-                    message = await response.json()
-                    server_id = message.get('message', '').split(':')[-1].strip()
-                    return server_id
-                else:
-                    print(f"Unexpected status code: {response.status}")
-            except Exception as e:
-                print(f"Request failed: {e}")
+async def send_request(session, server_url):
+    async with session.get(server_url + '/home') as response:
+        try:
+            if response.status == 200:
+                message = await response.json()
+                server_id = message.get('message', '').split(':')[-1].strip()
+                return server_id
+            else:
+                print(f"Unexpected status code: {response.status}")
+        except Exception as e:
+            print(f"Request failed: {e}")
     return -1
 
 async def send_requests(server_url, num_requests):
     response_counts = {}
-    tasks = [send_request(server_url) for _ in range(num_requests)]
-    responses = await asyncio.gather(*tasks)
+
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        tasks = [send_request(session, server_url) for _ in range(num_requests)]
+        responses = await asyncio.gather(*tasks)
 
     for server_id in responses:
         if response_counts.get(server_id) == None:
@@ -160,8 +161,6 @@ async def main():
     # A-3: Test all endpoints of the load balancer and simulate server failure
     print("Testing all endpoints of the load balancer")
     await test_endpoints(server_url)
-    print("Simulating server failure")
-    await simulate_server_failure(server_url,input("Enter server name to remove: "))
 
 if __name__ == "__main__":
     asyncio.run(main())
