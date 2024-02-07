@@ -1,0 +1,123 @@
+{
+    "client": "Thunder Client",
+    "collectionName": "customLB",
+    "dateExported": "2024-02-07T22:39:09.644Z",
+    "version": "1.1",
+    "folders": [
+        {
+            "_id": "b72c1773-297d-4132-9b2a-1f9e9063b4ca",
+            "name": "server",
+            "containerId": "",
+            "created": "2024-02-07T22:16:38.515Z",
+            "sortNum": 10000
+        },
+        {
+            "_id": "dd1c1730-2ce6-4878-b967-a6432648dfcc",
+            "name": "lb",
+            "containerId": "",
+            "created": "2024-02-07T22:16:44.990Z",
+            "sortNum": 20000
+        }
+    ],
+    "requests": [
+        {
+            "_id": "8400cf8c-3813-4432-9567-9c3361d3c7a3",
+            "colId": "c29840fd-57c6-45ab-844a-7ff6c16c0312",
+            "containerId": "b72c1773-297d-4132-9b2a-1f9e9063b4ca",
+            "name": "home",
+            "url": "/home",
+            "method": "GET",
+            "sortNum": 100000,
+            "created": "2024-02-07T22:16:55.522Z",
+            "modified": "2024-02-07T22:30:44.347Z",
+            "headers": [],
+            "params": [],
+            "tests": []
+        },
+        {
+            "_id": "b6aa4942-a607-4121-8fac-cba95777972c",
+            "colId": "c29840fd-57c6-45ab-844a-7ff6c16c0312",
+            "containerId": "b72c1773-297d-4132-9b2a-1f9e9063b4ca",
+            "name": "heartbeat",
+            "url": "/heartbeat",
+            "method": "GET",
+            "sortNum": 110000,
+            "created": "2024-02-07T22:17:20.668Z",
+            "modified": "2024-02-07T22:31:04.315Z",
+            "headers": [],
+            "params": [],
+            "tests": []
+        },
+        {
+            "_id": "de51b3aa-159a-483a-b561-95be5ac61880",
+            "colId": "c29840fd-57c6-45ab-844a-7ff6c16c0312",
+            "containerId": "dd1c1730-2ce6-4878-b967-a6432648dfcc",
+            "name": "rep",
+            "url": "/rep",
+            "method": "GET",
+            "sortNum": 120000,
+            "created": "2024-02-07T22:17:42.278Z",
+            "modified": "2024-02-07T22:31:16.217Z",
+            "headers": [],
+            "params": [],
+            "tests": []
+        },
+        {
+            "_id": "efdc6dc7-7713-4cb8-9918-8f2d59770b57",
+            "colId": "c29840fd-57c6-45ab-844a-7ff6c16c0312",
+            "containerId": "dd1c1730-2ce6-4878-b967-a6432648dfcc",
+            "name": "add",
+            "url": "/add",
+            "method": "POST",
+            "sortNum": 130000,
+            "created": "2024-02-07T22:17:59.779Z",
+            "modified": "2024-02-07T22:31:25.368Z",
+            "headers": [],
+            "params": [],
+            "body": {
+                "type": "json",
+                "raw": "{\n  \"n\": 4,\n  \"hostnames\": [\n    \"S5\",\n    \"S4\",\n    \"S10\",\n    \"S11\"\n  ]\n}",
+                "form": []
+            },
+            "tests": []
+        },
+        {
+            "_id": "197868eb-1030-45fa-9216-a4b81a15afcb",
+            "colId": "c29840fd-57c6-45ab-844a-7ff6c16c0312",
+            "containerId": "dd1c1730-2ce6-4878-b967-a6432648dfcc",
+            "name": "rm",
+            "url": "/rm",
+            "method": "DELETE",
+            "sortNum": 140000,
+            "created": "2024-02-07T22:19:02.127Z",
+            "modified": "2024-02-07T22:31:34.158Z",
+            "headers": [],
+            "params": [],
+            "body": {
+                "type": "json",
+                "raw": "{\n  \"n\": 3,\n  \"hostnames\": [\n    \"S5\",\n    \"S4\"\n  ]\n}",
+                "form": []
+            },
+            "tests": []
+        },
+        {
+            "_id": "693870a9-ce0a-465d-b33b-e4e145d88501",
+            "colId": "c29840fd-57c6-45ab-844a-7ff6c16c0312",
+            "containerId": "dd1c1730-2ce6-4878-b967-a6432648dfcc",
+            "name": "<path>",
+            "url": "/home",
+            "method": "GET",
+            "sortNum": 150000,
+            "created": "2024-02-07T22:20:23.198Z",
+            "modified": "2024-02-07T22:34:03.566Z",
+            "headers": [],
+            "params": [],
+            "tests": []
+        }
+    ],
+    "settings": {
+        "options": {
+            "baseUrl": "http://localhost:5000"
+        }
+    }
+}
