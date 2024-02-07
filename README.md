@@ -28,6 +28,15 @@ To efficiently distribute the requests coming from the clients, a load balancer 
 - **Concepts**: Consistent Hashing, Docker, REST APIs
 - **Tools**: Docker, Flask, Python
 
+### Assignment 2: Implementing a Scalable Database with Sharding
+
+<!-- In this assignment, you have to implement a sharded database that stores only one table StudT in multiple shards distributed across several server containers. This is an incremental project so that you can reuse the codebase from the first assignment. A system diagram of the sharded database is shown in Fig. 1. Here, shards are subparts of the database that only manage a limited number of entries (i.e., shard size as shown in the diagram). Shards can be replicated across multiple server containers to enable parallel read capabilities. For this assignment, we assume that write requests are blocking for a particular shard. Thus, if two write requests are scheduled simultaneously on shard (i), one of them will wait for the other to complete.
+However, Parallel writing to different shards, for instance, shard (i) and shard (j), is possible. The system’s current design provides scaling in two ways: (i) Read speed with more shard replicas and (ii) Database size with more shards and server -->
+
+- **Task**: Implement a sharded database that stores only one table StudT in multiple shards distributed across several server containers.
+- **Concepts**: Sharding, Replication, Consistency, Docker, REST APIs
+- **Tools**: Docker, Flask, Python, MySQL
+
 ## Usage
 
 1. Follow the instructions provided in each assignment folder to understand the task and requirements.
