@@ -8,5 +8,5 @@
 
 - Change working directory to `Assignment-2/Task-1`
 - Build the docker image using the command `docker build -t server-image .`
-- Run the docker container using the command `docker run -it -p <port>:5000 server-image`
+- Run the docker container using the command `docker run -it -p <port>:5000 -e SERVER_NAME=<server-name> server-image`
 - The server is now running on the specified port
