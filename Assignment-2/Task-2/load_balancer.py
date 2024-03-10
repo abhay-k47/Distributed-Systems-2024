@@ -155,13 +155,13 @@ async def init():
     servers = payload.get("servers")
 
     if not n or not schema or not shards or not servers:
-        return jsonify({"message": "Invalid payload", "status": "error"}), 400
+        return jsonify({"message": "Invalid payload", "status": "failure"}), 400
     
     if 'columns' not in schema or 'dtypes' not in schema or len(schema['columns']) != len(schema['dtypes']) or len(schema['columns']) == 0:
-        return jsonify({"message": "Invalid schema", "status": "error"}), 400
+        return jsonify({"message": "Invalid schema", "status": "failure"}), 400
     
     if len(shards) == 0 or len(servers) == 0:
-        return jsonify({"message": "Invalid shards or servers", "status": "error"}), 400
+        return jsonify({"message": "Invalid shards or servers", "status": "failure"}), 400
     
     global shardT
     global prefix_shard_sizes
@@ -178,7 +178,7 @@ async def init():
             spawned_servers.append(server)
 
     if len(spawned_servers) == 0:
-        return jsonify({"message": "No servers spawned", "status": "error"}), 500
+        return jsonify({"message": "No servers spawned", "status": "failure"}), 500
     
     if len(spawned_servers) != n:
         return jsonify({"message": f"Spawned only {spawned_servers} servers", "status": "success"}), 200
@@ -199,19 +199,40 @@ async def add_servers():
     new_shards = payload.get("new_shards")
     servers = payload.get("servers")
     
+    if not n or not new_shards or not servers:
+        return jsonify({"message": "Invalid payload", "status": "failure"}), 400
+    
+    if n>len(new_shards):
+        return jsonify*{"message": f"<Error> Number of new servers {n} is greater than newly added instances {len(new_shards)}", "status": "failure"}, 400
+    
+    for shardData in new_shards:
+        shard_size = shardData["SHard_size"]
+        shardT.append(shardData)
+        prefix_shard_sizes.append(prefix_shard_sizes[-1] + shard_size)
+
+    spawned_servers = []
+    for server, shardList in servers.items():
+        spawned = await spawn_server(server, shardList)
+        if spawned:
+            spawned_servers.append(server)
+
+    if len(spawned_servers) == 0:
+        return jsonify({"message": "No servers spawned", "status": "failure"}), 500
+    
+    return jsonify({"message": f"Add {', '.join(spawned_servers)} servers", "status": "success"}), 200
 
 @app.route('/read', methods=['POST'])
 async def read():
     payload = await request.get_json()
     stud_id = payload.get("Stud_id")
     if not stud_id:
-        return jsonify({"message": "Invalid payload", "status": "error"}), 400
+        return jsonify({"message": "Invalid payload", "status": "failure"}), 400
     
     low = stud_id.get("low")
     high = stud_id.get("high")
 
     if not low or not high:
-        return jsonify({"message": "Invalid payload", "status": "error"}), 400
+        return jsonify({"message": "Invalid payload", "status": "failure"}), 400
     
     lower_shard_index = bisect_right(prefix_shard_sizes, low)
     upper_shard_index = bisect_right(prefix_shard_sizes, high)
@@ -232,7 +253,7 @@ async def read():
                     data.extend(result.get("data", []))
                 else:
                     app.logger.error(f"Error while reading from {server} for shard {shard}")
-                    return jsonify({"message": "Error while reading", "status": "error"}), 500
+                    return jsonify({"message": "Error while reading", "status": "failure"}), 500
                 
     return jsonify({"shards_queried": shards_queried, "data": data, "status": "success"}), 200
 
@@ -242,7 +263,7 @@ async def write():
     payload = await request.get_json()
     data = payload.get("data")
     if not data:
-        return jsonify({"message": "Invalid payload", "status": "error"}), 400
+        return jsonify({"message": "Invalid payload", "status": "failure"}), 400
     
     shards_to_data = {}
 
@@ -265,10 +286,10 @@ async def write():
                 for result in results:
                     if isinstance(result, Exception):
                         app.logger.error(f"Error while writing to {server} for shard {shard}, got exception {result}")
-                        return jsonify({"message": "Error while writing", "status": "error"}), 500
+                        return jsonify({"message": "Error while writing", "status": "failure"}), 500
                     if result.status != 200:
                         app.logger.error(f"Error while writing to {server} for shard {shard}, got status {result.status}")
-                        return jsonify({"message": "Error while writing", "status": "error"}), 500
+                        return jsonify({"message": "Error while writing", "status": "failure"}), 500
                     
     return jsonify({"message": f"{len(data)} Data entries added", "status": "success"}), 200
 
