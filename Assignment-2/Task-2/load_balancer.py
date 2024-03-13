@@ -258,7 +258,7 @@ async def read():
     return jsonify({"shards_queried": shards_queried, "data": data, "status": "success"}), 200
 
 
-@app.route('/write', method=["POST"])
+@app.route('/write', methods=['POST'])
 async def write():
     payload = await request.get_json()
     data = payload.get("data")

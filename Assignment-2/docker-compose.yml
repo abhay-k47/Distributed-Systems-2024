@@ -4,6 +4,23 @@ networks:
     name: net1
     driver: bridge
 services:
+  lb:
+    build: ./Task-2/
+    image: lb
+    container_name: lb
+    ports:
+      - "5000:5000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    privileged: true
+    networks:
+      net1:
+        aliases:
+          - lb
+    depends_on:
+      - server1
+      - server2
+      - server3
   server1:
     build: ./Task-1/
     image: server
@@ -12,7 +29,25 @@ services:
       net1:
         aliases:
           - server1
-    ports:
-      - "5000:5000"
     environment:
       - SERVER_NAME=server1
+  server2:
+    build: ./Task-1/
+    image: server
+    container_name: server2
+    networks:
+      net1:
+        aliases:
+          - server2
+    environment:
+      - SERVER_NAME=server2
+  server3:
+    build: ./Task-1/
+    image: server
+    container_name: server3
+    networks:
+      net1:
+        aliases:
+          - server3
+    environment:
+      - SERVER_NAME=server3

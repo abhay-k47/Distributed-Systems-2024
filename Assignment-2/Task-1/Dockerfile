@@ -7,7 +7,12 @@ WORKDIR /app
 RUN apt-get update && \
     apt-get install -y python3 && \
     apt-get install -y python3-pip && \
-    pip install --upgrade pip && \
+    apt-get install -y python3-venv && \
+    python3 -m venv /opt/venv
+
+ENV PATH="/opt/venv/bin:$PATH"
+
+RUN pip install --upgrade pip && \
     pip install -r requirements.txt
 
 RUN chmod +x /app/custom-entry.sh
