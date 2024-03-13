@@ -1,3 +1,6 @@
+from sortedcontainers import SortedList
+from bisect import bisect_left
+
 class ConsistentHashMap:
 
     def __init__(self, nservers=6, nslots=512, nvirtual=9, requestHashfn=None, vserverHashfn=None, probing='linear'):
@@ -18,7 +21,7 @@ class ConsistentHashMap:
 
         self.slot_to_server = [-1]*self.nslots
         self.server_to_slots = {}
-        self.slot_server_pair = {}
+        self.allocated_slots = SortedList()
 
     def default_requestHashfn(self, requestId) -> int:
         return (requestId*requestId+2*requestId+17)%self.nslots
@@ -44,6 +47,7 @@ class ConsistentHashMap:
             hashValue = self.vserverHashfn(serverId, virtualId)
             hashValue = self.probe(hashValue)
             self.slot_to_server[hashValue] = serverId
+            self.allocated_slots.add(hashValue)
             serverSlots.append(hashValue)
         self.server_to_slots[serverId] = serverSlots
 
@@ -52,13 +56,13 @@ class ConsistentHashMap:
             return
         for slot in self.server_to_slots[serverId]:
             self.slot_to_server[slot] = -1
+            self.allocated_slots.remove(slot)
         del self.server_to_slots[serverId]
 
     def getServer(self, requestId) -> int:
         if len(self.server_to_slots) == 0:
             return -1
-        hashValue = self.requestHashfn(requestId)
-        while self.slot_to_server[hashValue] == -1:
-            hashValue = (hashValue+1)%self.nslots
+        hashValue = self.allocated_slots[bisect_left(
+            self.allocated_slots, self.requestHashfn(requestId)) % len(self.allocated_slots)]
         return self.slot_to_server[hashValue]
         
