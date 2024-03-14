@@ -1,6 +1,7 @@
 from bisect import bisect_right
 from collections import defaultdict
 import random
+import re
 from typing import Dict
 from quart import Quart, jsonify, Response, request
 import asyncio
@@ -29,7 +30,7 @@ shard_write_lock = defaultdict(lambda: asyncio.Lock())
 # configs server for particular schema and shards
 async def config_server(serverName, schema, shards):
     app.logger.info(f"Configuring {serverName}")
-    await asyncio.sleep(6)
+    await asyncio.sleep(20)
     async with aiohttp.ClientSession() as session:
         payload = {"schema": schema, "shards": shards}
         async with session.post(f'http://{serverName}:5000/config', json=payload) as resp:
@@ -40,7 +41,9 @@ async def config_server(serverName, schema, shards):
 
 # gets the shard data from available server       
 async def get_shard_data(shard):
-    serverId = shard_hash_map[shard]
+    print(f"Getting shard data for {shard} from available servers")
+    serverId = shard_hash_map[shard].getServer(random.randint(1000000, 1000000))
+    print(f"ServerId for shard {shard} is {serverId}")
     serverName = id_to_server[serverId]
     async with aiohttp.ClientSession() as session:
         payload = {"shards": [shard]}
@@ -77,13 +80,13 @@ async def spawn_server(serverName=None, shardList=[], schema={"columns":["Stud_i
     newserver = False
     serverId = server_to_id.get(serverName)
     if serverId == None:
+        newserver = True
         serverId = available_servers.pop(0)
     if serverName == None:
         serverName = f'server{serverId}'
-        newserver = True
 
     containerName = serverName
-    res = os.popen(f"docker run --name {containerName} --network net1 --network-alias {containerName} -e SERVER_ID={containerName} -d server").read()
+    res = os.popen(f"docker run --name {containerName} --network net1 --network-alias {containerName} -e SERVER_NAME={containerName} -d server").read()
     if res == "":
         app.logger.error(f"Error while spawning {containerName}")
         return False
@@ -142,8 +145,9 @@ async def periodic_heatbeat_check(interval=2):
                     shardList.append(shard)
                     shard_hash_map[shard].removeServer(server_to_id[serverName])
                 deadServerList.append(serverName)
+                del servers_to_shard[serverName]
         for serverName in deadServerList:
-            spawn_server(serverName, shardList)
+            await spawn_server(serverName, shardList)
         await asyncio.sleep(interval)
 
 @app.route('/init', methods=['POST'])
@@ -170,7 +174,7 @@ async def init():
     prefix_shard_sizes = [0]
     for shard in shards:
         prefix_shard_sizes.append(prefix_shard_sizes[-1] + shard["Shard_size"])
-    
+
     spawned_servers = []
     for server, shardList in servers.items():
         spawned = await spawn_server(server, shardList, schema)
@@ -202,17 +206,20 @@ async def add_servers():
     if not n or not new_shards or not servers:
         return jsonify({"message": "Invalid payload", "status": "failure"}), 400
     
-    if n>len(new_shards):
+    if n>len(servers):
         return jsonify*{"message": f"<Error> Number of new servers {n} is greater than newly added instances {len(new_shards)}", "status": "failure"}, 400
     
     for shardData in new_shards:
-        shard_size = shardData["SHard_size"]
+        shard_size = shardData["Shard_size"]
         shardT.append(shardData)
         prefix_shard_sizes.append(prefix_shard_sizes[-1] + shard_size)
 
     spawned_servers = []
     for server, shardList in servers.items():
-        spawned = await spawn_server(server, shardList)
+        if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]*$', server):
+            spawned = await spawn_server(None, shardList)
+        else:
+            spawned = await spawn_server(server, shardList)
         if spawned:
             spawned_servers.append(server)
 
