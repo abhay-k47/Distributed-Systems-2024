@@ -28,6 +28,8 @@ shard_write_lock = defaultdict(lambda: asyncio.Lock())
 
 # configs server for particular schema and shards
 async def config_server(serverName, schema, shards):
+    app.logger.info(f"Configuring {serverName}")
+    await asyncio.sleep(6)
     async with aiohttp.ClientSession() as session:
         payload = {"schema": schema, "shards": shards}
         async with session.post(f'http://{serverName}:5000/config', json=payload) as resp:
@@ -102,8 +104,6 @@ async def spawn_server(serverName=None, shardList=[], schema={"columns":["Stud_i
             id_to_server[serverId] = serverName
             server_to_id[serverName] = serverId
             servers_to_shard[serverName] = shardList
-            if newserver:
-                available_servers.append(serverId) 
 
             app.logger.info(f"Updated metadata for {containerName}")
         except Exception as e:
@@ -149,7 +149,7 @@ async def periodic_heatbeat_check(interval=2):
 @app.route('/init', methods=['POST'])
 async def init():
     payload = await request.get_json()
-    n = payload.get("n")
+    n = payload.get("N")
     schema = payload.get("schema")
     shards = payload.get("shards")
     servers = payload.get("servers")
