@@ -65,4 +65,4 @@ class ConsistentHashMap:
         hashValue = self.allocated_slots[bisect_left(
             self.allocated_slots, self.requestHashfn(requestId)) % len(self.allocated_slots)]
         return self.slot_to_server[hashValue]
-        
+    
