@@ -30,7 +30,7 @@ shard_write_lock = defaultdict(lambda: asyncio.Lock())
 # configs server for particular schema and shards
 async def config_server(serverName, schema, shards):
     app.logger.info(f"Configuring {serverName}")
-    await asyncio.sleep(20)
+    await asyncio.sleep(30)
     async with aiohttp.ClientSession() as session:
         payload = {"schema": schema, "shards": shards}
         async with session.post(f'http://{serverName}:5000/config', json=payload) as resp:
@@ -89,7 +89,7 @@ async def spawn_server(serverName=None, shardList=[], schema={"columns":["Stud_i
     res = os.popen(f"docker run --name {containerName} --network net1 --network-alias {containerName} -e SERVER_NAME={containerName} -d server").read()
     if res == "":
         app.logger.error(f"Error while spawning {containerName}")
-        return False
+        return False, ""
     else:
         app.logger.info(f"Spawned {containerName}")
         try:
@@ -111,9 +111,9 @@ async def spawn_server(serverName=None, shardList=[], schema={"columns":["Stud_i
             app.logger.info(f"Updated metadata for {containerName}")
         except Exception as e:
             app.logger.error(f"Error while spawning {containerName}, got exception {e}")
-            return False
+            return False, ""
         
-        return True
+        return True, serverName
     
 # checks periodic heartbeat of server
 async def check_heartbeat(serverName):
@@ -177,7 +177,7 @@ async def init():
 
     spawned_servers = []
     for server, shardList in servers.items():
-        spawned = await spawn_server(server, shardList, schema)
+        spawned, _ = await spawn_server(server, shardList, schema)
         if spawned:
             spawned_servers.append(server)
 
@@ -217,9 +217,9 @@ async def add_servers():
     spawned_servers = []
     for server, shardList in servers.items():
         if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]*$', server):
-            spawned = await spawn_server(None, shardList)
+            spawned, server = await spawn_server(None, shardList)
         else:
-            spawned = await spawn_server(server, shardList)
+            spawned, _ = await spawn_server(server, shardList)
         if spawned:
             spawned_servers.append(server)
 
@@ -227,6 +227,53 @@ async def add_servers():
         return jsonify({"message": "No servers spawned", "status": "failure"}), 500
     
     return jsonify({"message": f"Add {', '.join(spawned_servers)} servers", "status": "success"}), 200
+
+
+def remove_container(hostname):
+    try:
+        serverId = server_to_id[hostname]
+        shardList = servers_to_shard[hostname]
+        for shard in shardList:
+            shard_hash_map[shard].removeServer(serverId)
+        del servers_to_shard[hostname]
+        available_servers.append(serverId)
+        server_to_id.pop(hostname)
+        id_to_server.pop(serverId)
+        os.system(f"docker stop {hostname} && docker rm {hostname}")
+    except Exception as e:
+        app.logger.error(f"<ERROR> {e} occurred while removing hostname={hostname}")
+        raise e 
+    app.logger.info(f"Server with hostname={hostname} removed successfully")
+
+
+@app.route('/rm', methods=['DELETE'])
+async def remove_servers():
+    payload = await request.get_json()
+    n = payload.get("n")
+    servers = payload.get("servers")
+    
+    if not n or not servers:
+        return jsonify({"message": "Invalid payload", "status": "failure"}), 400
+
+    for server in servers:
+        if server not in server_to_id:
+            return jsonify(message=f"<ERROR> {server} is not a valid server name", status="failure"), 400
+
+    random_cnt = n - len(servers)
+    remove_keys = []
+    try:
+        for server in servers:
+            remove_container(hostname=server)
+        if random_cnt > 0 :
+            remove_keys = random.sample(list(server_to_id.keys()), random_cnt)
+            for server in remove_keys:
+                remove_container(hostname=server)
+    except Exception as e:
+        return jsonify(message=f"<ERROR> {e} occurred while removing", status="failure"), 400
+    
+    remove_keys.extend(servers)
+    return jsonify({"message": {"N": len(servers_to_shard), "servers": remove_keys}, "status": "success"}), 200
+
 
 @app.route('/read', methods=['POST'])
 async def read():
