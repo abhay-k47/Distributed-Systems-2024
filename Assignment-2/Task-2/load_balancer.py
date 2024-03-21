@@ -150,6 +150,7 @@ async def periodic_heatbeat_check(interval=2):
             await spawn_server(serverName, shardList)
         await asyncio.sleep(interval)
 
+# assuming 3 replicas when shard placement is not mentioned
 @app.route('/init', methods=['POST'])
 async def init():
     payload = await request.get_json()
@@ -158,13 +159,13 @@ async def init():
     shards = payload.get("shards")
     servers = payload.get("servers")
 
-    if not n or not schema or not shards or not servers:
+    if not n or not schema or not shards:
         return jsonify({"message": "Invalid payload", "status": "failure"}), 400
     
     if 'columns' not in schema or 'dtypes' not in schema or len(schema['columns']) != len(schema['dtypes']) or len(schema['columns']) == 0:
         return jsonify({"message": "Invalid schema", "status": "failure"}), 400
     
-    if len(shards) == 0 or len(servers) == 0:
+    if len(shards) == 0:
         return jsonify({"message": "Invalid shards or servers", "status": "failure"}), 400
     
     global shardT
@@ -176,6 +177,17 @@ async def init():
         prefix_shard_sizes.append(prefix_shard_sizes[-1] + shard["Shard_size"])
 
     spawned_servers = []
+
+    # *2 would also work fine
+    shards = shards*3
+    if not servers:
+        for i in range(n):
+            nshards = len(shards)//n
+            spawned, server = await spawn_server(None, shards[i:i+nshards], schema)
+            if spawned:
+                spawned_servers.append(server)
+        servers = {}
+
     for server, shardList in servers.items():
         spawned, _ = await spawn_server(server, shardList, schema)
         if spawned:
@@ -196,6 +208,7 @@ def status():
     N = len(servers)
     return jsonify({"N": N, "shards": shards, "servers": servers, "status": "success"}), 200
 
+# if new_shards are empty, then we are just increasing replication factor
 @app.route('/add', methods=['POST'])
 async def add_servers():
     payload = await request.get_json()
@@ -203,12 +216,19 @@ async def add_servers():
     new_shards = payload.get("new_shards")
     servers = payload.get("servers")
     
-    if not n or not new_shards or not servers:
+    if not n or not servers:
         return jsonify({"message": "Invalid payload", "status": "failure"}), 400
     
-    if n>len(servers):
-        return jsonify*{"message": f"<Error> Number of new servers {n} is greater than newly added instances {len(new_shards)}", "status": "failure"}, 400
+    if n!=len(servers):
+        return jsonify*{"message": f"<Error> Number of new servers {n} is not equal to newly added instances {len(new_shards)}", "status": "failure"}, 400
     
+    for server in servers:
+        if server in server_to_id:
+            return jsonify(message=f"<ERROR> {server} already exists", status="failure"), 400
+        
+    if not new_shards:
+        new_shards = []
+
     for shardData in new_shards:
         shard_size = shardData["Shard_size"]
         shardT.append(shardData)
@@ -274,7 +294,7 @@ async def remove_servers():
     remove_keys.extend(servers)
     return jsonify({"message": {"N": len(servers_to_shard), "servers": remove_keys}, "status": "success"}), 200
 
-
+# from here not completely done
 @app.route('/read', methods=['POST'])
 async def read():
     payload = await request.get_json()
