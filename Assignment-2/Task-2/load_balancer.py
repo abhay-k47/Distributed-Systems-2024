@@ -1,4 +1,4 @@
-from bisect import bisect_right
+from bisect import bisect_left, bisect_right
 from collections import defaultdict
 import random
 import re
@@ -102,7 +102,7 @@ async def spawn_server(serverName=None, shardList=[], schema={"columns":["Stud_i
 
             for shard in shardList:
                 shard_hash_map[shard].addServer(serverId)
-                shard_to_servers.setdefault(shard, []).append(serverId)
+                shard_to_servers.setdefault(shard, []).append(serverName)
             
             id_to_server[serverId] = serverName
             server_to_id[serverName] = serverId
@@ -309,18 +309,19 @@ async def read():
         return jsonify({"message": "Invalid payload", "status": "failure"}), 400
     
     lower_shard_index = bisect_right(prefix_shard_sizes, low)
-    upper_shard_index = bisect_right(prefix_shard_sizes, high)
+    upper_shard_index = bisect_left(prefix_shard_sizes, high+1)
     lower_shard_index -= 1
-
-    shards_queried = [shard["Shard_id"] for shard in shardT[lower_shard_index:upper_shard_index+1]]
+    shardIndex = lower_shard_index
+    shards_queried = [shard["Shard_id"] for shard in shardT[lower_shard_index:upper_shard_index]]
     
     data = []
 
     for shard in shards_queried:
-        serverId = shard_hash_map[shard]
+        serverId = shard_hash_map[shard].getServer(random.randint(100000, 1000000))
         server = id_to_server[serverId]
         async with aiohttp.ClientSession() as session:
-            spayload = {"Stud_id": {"low": max(low, prefix_shard_sizes[lower_shard_index]), "high": min(high, prefix_shard_sizes[upper_shard_index])}}
+            spayload = {"shard": shard , "Stud_id": {"low": max(low, prefix_shard_sizes[shardIndex]), "high": min(high, prefix_shard_sizes[shardIndex]+shardT[shardIndex]["Shard_size"]-1)}}
+            app.logger.info(f"Reading from {server} for shard {shard} with payload {spayload}")
             async with session.post(f'http://{server}:5000/read', json=spayload) as resp:
                 if resp.status == 200:
                     result = await resp.json()
@@ -328,6 +329,8 @@ async def read():
                 else:
                     app.logger.error(f"Error while reading from {server} for shard {shard}")
                     return jsonify({"message": "Error while reading", "status": "failure"}), 500
+
+            shardIndex += 1
                 
     return jsonify({"shards_queried": shards_queried, "data": data, "status": "success"}), 200
 
@@ -341,9 +344,12 @@ async def write():
     
     shards_to_data = {}
 
+    # can be optimised instead of binary search, by sorting wrt to Stud_id
     for record in data:
         stud_id = record.get("Stud_id")
         shardIndex = bisect_right(prefix_shard_sizes, stud_id)
+        if shardIndex == 0 or (shardIndex == len(prefix_shard_sizes) and stud_id >= prefix_shard_sizes[-1]+shardT[-1]["Shard_size"]):
+            return jsonify({"message": "Invalid Stud_id", "status": "failure"}), 400
         shard = shardT[shardIndex-1]["Shard_id"]
         shards_to_data[shard] = shards_to_data.get(shard, [])
         shards_to_data[shard].append(record)
@@ -353,6 +359,7 @@ async def write():
             async with aiohttp.ClientSession() as session:
                 tasks = []
                 for server in shard_to_servers[shard]:
+                    app.logger.info(f"Writing to {server} for shard {shard}")
                     payload = {"shard": shard, "curr_idx": 1, "data": data}
                     task = asyncio.create_task(session.post(f'http://{server}:5000/write', json=payload))
                     tasks.append(task)
@@ -366,6 +373,73 @@ async def write():
                         return jsonify({"message": "Error while writing", "status": "failure"}), 500
                     
     return jsonify({"message": f"{len(data)} Data entries added", "status": "success"}), 200
+
+@app.route('/update', methods=['PUT'])
+async def update():
+    payload = await request.get_json()
+    stud_id = payload.get("Stud_id")
+    data = payload.get("data")
+    if not stud_id or not data:
+        return jsonify({"message": "Invalid payload", "status": "failure"}), 400
+    
+    stud_name = data.get("Stud_name")
+    stud_marks = data.get("Stud_marks")
+
+    if not stud_name and not stud_marks:
+        return jsonify({"message": "Invalid payload", "status": "failure"}), 400
+    
+    shardIndex = bisect_right(prefix_shard_sizes, stud_id)
+    shardIndex -= 1
+
+    shard = shardT[shardIndex]["Shard_id"]
+
+    async with shard_write_lock[shard]:
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+            for server in shard_to_servers[shard]:
+                payload = {"shard": shard, "Stud_id": stud_id, "data": data}
+                task = asyncio.create_task(session.put(f'http://{server}:5000/update', json=payload))
+                tasks.append(task)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    app.logger.error(f"Error while updating to {server} for shard {shard}, got exception {result}")
+                    return jsonify({"message": "Error while updating", "status": "failure"}), 500
+                if result.status != 200:
+                    app.logger.error(f"Error while updating to {server} for shard {shard}, got status {result.status}")
+                    return jsonify({"message": "Error while updating", "status": "failure"}), 500
+                
+    return jsonify({"message": f"Data entry for Stud_id: {stud_id} updated", "status": "success"}), 200
+
+@app.route('/del', methods=['DELETE'])
+async def delete():
+    payload = await request.get_json()
+    stud_id = payload.get("Stud_id")
+    if not stud_id:
+        return jsonify({"message": "Invalid payload", "status": "failure"}), 400
+    
+    shardIndex = bisect_right(prefix_shard_sizes, stud_id)
+    shardIndex -= 1
+
+    shard = shardT[shardIndex]["Shard_id"]
+
+    async with shard_write_lock[shard]:
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+            for server in shard_to_servers[shard]:
+                payload = {"shard": shard, "Stud_id": stud_id}
+                task = asyncio.create_task(session.delete(f'http://{server}:5000/del', json=payload))
+                tasks.append(task)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    app.logger.error(f"Error while deleting to {server} for shard {shard}, got exception {result}")
+                    return jsonify({"message": "Error while deleting", "status": "failure"}), 500
+                if result.status != 200:
+                    app.logger.error(f"Error while deleting to {server} for shard {shard}, got status {result.status}")
+                    return jsonify({"message": "Error while deleting", "status": "failure"}), 500
+                
+    return jsonify({"message": f"Data entry with Stud_id: {stud_id} removed from all replicas", "status": "success"}), 200
 
 @app.before_serving
 async def startup():
