@@ -26,6 +26,7 @@ shardT = []
 
 shard_hash_map:Dict[str, ConsistentHashMap] = defaultdict(ConsistentHashMap)
 shard_write_lock = defaultdict(lambda: asyncio.Lock())
+metadata_lock = asyncio.Lock()
 
 # configs server for particular schema and shards
 async def config_server(serverName, schema, shards):
@@ -42,9 +43,11 @@ async def config_server(serverName, schema, shards):
 # gets the shard data from available server       
 async def get_shard_data(shard):
     print(f"Getting shard data for {shard} from available servers")
-    serverId = shard_hash_map[shard].getServer(random.randint(1000000, 1000000))
-    print(f"ServerId for shard {shard} is {serverId}")
-    serverName = id_to_server[serverId]
+    serverName = None
+    async with metadata_lock:
+        serverId = shard_hash_map[shard].getServer(random.randint(1000000, 1000000))
+        print(f"ServerId for shard {shard} is {serverId}")
+        serverName = id_to_server[serverId]
     async with aiohttp.ClientSession() as session:
         payload = {"shards": [shard]}
         async with session.get(f'http://{serverName}:5000/copy', json=payload) as resp:
@@ -81,7 +84,8 @@ async def spawn_server(serverName=None, shardList=[], schema={"columns":["Stud_i
     serverId = server_to_id.get(serverName)
     if serverId == None:
         newserver = True
-        serverId = available_servers.pop(0)
+        async with metadata_lock:
+            serverId = available_servers.pop(0)
     if serverName == None:
         serverName = f'server{serverId}'
 
@@ -100,13 +104,14 @@ async def spawn_server(serverName=None, shardList=[], schema={"columns":["Stud_i
                 await restore_shards(serverName, shardList)
                 app.logger.info(f"Restored shards for {containerName}")
 
-            for shard in shardList:
-                shard_hash_map[shard].addServer(serverId)
-                shard_to_servers.setdefault(shard, []).append(serverName)
-            
-            id_to_server[serverId] = serverName
-            server_to_id[serverName] = serverId
-            servers_to_shard[serverName] = shardList
+            async with metadata_lock:
+                for shard in shardList:
+                    shard_hash_map[shard].addServer(serverId)
+                    shard_to_servers.setdefault(shard, []).append(serverName)
+                
+                id_to_server[serverId] = serverName
+                server_to_id[serverName] = serverId
+                servers_to_shard[serverName] = shardList
 
             app.logger.info(f"Updated metadata for {containerName}")
         except Exception as e:
@@ -179,19 +184,21 @@ async def init():
     spawned_servers = []
 
     # *2 would also work fine
+    tasks = []
     shards = shards*3
     if not servers:
         for i in range(n):
             nshards = len(shards)//n
-            spawned, server = await spawn_server(None, shards[i:i+nshards], schema)
-            if spawned:
-                spawned_servers.append(server)
+            tasks.append(spawn_server(None, shards[i:i+nshards], schema))
         servers = {}
 
     for server, shardList in servers.items():
-        spawned, _ = await spawn_server(server, shardList, schema)
-        if spawned:
-            spawned_servers.append(server)
+        tasks.append(spawn_server(server, shardList, schema))
+
+    results = await asyncio.gather(*tasks)
+    for result in results:
+        if result[0]:
+            spawned_servers.append(result[1])
 
     if len(spawned_servers) == 0:
         return jsonify({"message": "No servers spawned", "status": "failure"}), 500
@@ -235,13 +242,17 @@ async def add_servers():
         prefix_shard_sizes.append(prefix_shard_sizes[-1] + shard_size)
 
     spawned_servers = []
+    tasks = []
     for server, shardList in servers.items():
         if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9_.-]*$', server):
-            spawned, server = await spawn_server(None, shardList)
+            tasks.append(spawn_server(None, shardList))
         else:
-            spawned, _ = await spawn_server(server, shardList)
-        if spawned:
-            spawned_servers.append(server)
+            tasks.append(spawn_server(server, shardList))
+
+    results = await asyncio.gather(*tasks)
+    for result in results:
+        if result[0]:
+            spawned_servers.append(result[1])
 
     if len(spawned_servers) == 0:
         return jsonify({"message": "No servers spawned", "status": "failure"}), 500
