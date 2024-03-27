@@ -65,3 +65,18 @@
     ![A-2-Write Time](./Task-3/A2_write_time.png)
 
 ### Note - Average Read Time decreased in A2 in comparison to A1 whereas Average Write Time increased in A2 in comparison to A1 due to increase in the number of the shard replicas.
+
+
+### A-3: ncrease the number of Servers (to 10) by adding new servers and increase the number of shards (shard to 6, shard replicas to 8). Define the (init endpoint) configurations according to your choice. Report the write speed up for 10000 writes and read speed up for 10000 reads.
+
+![A3_total_read_time](./Task-3/A3_total_read_time.png)
+
+![A3_total_write_time](./Task-3/A3_total_write_time.png)
+
+![A3_mean_read_time](./Task-3/A3_mean_read_time.png)
+
+![A3_mean_write_time](./Task-3/A3_mean_write_time.png)
+
+![A3_error_read_time](./Task-3/A3_error_read_time.png)
+
+![A3_error_write_time](./Task-3/A3_error_write_time.png)

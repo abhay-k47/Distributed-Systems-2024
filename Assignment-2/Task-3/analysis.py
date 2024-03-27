@@ -25,7 +25,7 @@ def plot_line_chart(x_values, y_values, x_label, y_label, title, path):
 
 
 def launch_rw_requests():
-    shuffled_endpoints = ["/read"]*10 + ["/write"]*10
+    shuffled_endpoints = ["/read"]*10000 + ["/write"]*10000
     random.shuffle(shuffled_endpoints)
 
     read_time = []
