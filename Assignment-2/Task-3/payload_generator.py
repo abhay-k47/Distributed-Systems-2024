@@ -10,10 +10,10 @@ class PayloadGenerator:
         if endpoint == "/read":
             return self._read_payload()
         elif endpoint == "/write":
-            return self._write_payload(random.randint(1, 10))
+            return self._write_payload(random.randint(1, 20))
         elif endpoint == "/update":
             return self._update_payload()
-        elif endpoint == "/delete":
+        elif endpoint == "/del":
             return self._delete_payload()
         else:
             raise ValueError("Invalid endpoint.")
@@ -38,7 +38,7 @@ class PayloadGenerator:
                 {'Stud_id': Stud_id, 'Stud_name': Stud_name, 'Stud_marks': Stud_marks})
         return {'data': data}
 
-    def _updated_payload(self):
+    def _update_payload(self):
         if len(self.allocated_ids) == 0:
             raise ValueError("No allocated student IDs.")
         Stud_id = random.choice(tuple(self.allocated_ids))

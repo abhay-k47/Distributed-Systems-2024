@@ -17,3 +17,11 @@ services:
       net1:
         aliases:
           - lb
+  server:
+    build: ./Task-1
+    image: server
+    container_name: server
+    networks:
+      net1:
+        aliases:
+          - server
