@@ -38,6 +38,13 @@
     - `/del,method=DELETE`
         - This endpoint deletes data entries from the distributed database.
 
+### Design Choices
+- Metadata storing the servers and shards information is stored in the load balancer and not in the database, so as to avoid the need to query the database for metadata information for every request. This is done to reduce the latency in the system.
+- The load balancer uses consistent hashing to distribute the data across the shards and replicas. This is done to ensure that the data is uniformly distributed across the shards and replicas.
+- When no placement of shards in servers in mentioned in `\init`, load balancer places shards taking replication factor as 3. 
+- If new_shards are empty in `\add`, then replication is done and no new addition of shards.
+- While writing if a server fails, then load balancer returns which server failed and the data is not written to the failed server.
+
 ## Task-3: Analysis
 
 ### A-1: The read and write speed for 10000 writes and 10000 reads in the default configuration  given in task 2

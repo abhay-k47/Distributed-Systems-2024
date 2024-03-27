@@ -2,7 +2,7 @@ build:
 	sudo docker-compose build
 
 up:
-	sudo docker-compose up lb -d
+	sudo docker-compose up lb
 
 down:
 	sudo docker-compose down
