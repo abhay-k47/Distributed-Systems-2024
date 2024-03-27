@@ -31,7 +31,11 @@ metadata_lock = asyncio.Lock()
 # configs server for particular schema and shards
 async def config_server(serverName, schema, shards):
     app.logger.info(f"Configuring {serverName}")
-    await asyncio.sleep(30)
+    while True:
+        spawned = await check_heartbeat(serverName, log=False)
+        if spawned:
+            break
+        await asyncio.sleep(2)
     async with aiohttp.ClientSession() as session:
         payload = {"schema": schema, "shards": shards}
         async with session.post(f'http://{serverName}:5000/config', json=payload) as resp:
@@ -121,9 +125,10 @@ async def spawn_server(serverName=None, shardList=[], schema={"columns":["Stud_i
         return True, serverName
     
 # checks periodic heartbeat of server
-async def check_heartbeat(serverName):
+async def check_heartbeat(serverName, log=True):
     try:
-        app.logger.info(f"Checking heartbeat of {serverName}")
+        if(log):
+            app.logger.info(f"Checking heartbeat of {serverName}")
         async with aiohttp.ClientSession(trust_env=True) as client_session:
             async with client_session.get(f'http://{serverName}:5000/heartbeat') as resp:
                 if resp.status == 200:
@@ -131,7 +136,8 @@ async def check_heartbeat(serverName):
                 else:
                     return False
     except Exception as e:
-        app.logger.error(f"Error while checking heartbeat of {serverName}: {e}")
+        if log:
+            app.logger.error(f"Error while checking heartbeat of {serverName}: {e}")
         return False
 
 async def periodic_heatbeat_check(interval=2):
