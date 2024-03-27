@@ -7,7 +7,7 @@ from payload_generator import PayloadGenerator
 
 
 base_url = "http://localhost:5000"
-generator = PayloadGenerator()
+generator = PayloadGenerator(12288)
 
 
 def plot_line_chart(x_values, y_values, x_label, y_label, title, path):
@@ -24,7 +24,7 @@ def plot_line_chart(x_values, y_values, x_label, y_label, title, path):
 
 
 def launch_rw_requests():
-    shuffled_endpoints = ["/read"]*10000 + ["/write"]*10000
+    shuffled_endpoints = ["/read"]*1000 + ["/write"]*1000
     random.shuffle(shuffled_endpoints)
 
     read_time = []
@@ -46,6 +46,29 @@ def launch_rw_requests():
             write_time.append(time.time() - start)
 
     return read_time, write_time
+
+
+def send_request(endpoint, method, payload=None):
+    url = f"{base_url}/{endpoint}"
+    try:
+        if method == "GET":
+            response = requests.get(url)
+        elif method == "POST":
+            response = requests.post(url, json=payload)
+        elif method == "PUT":
+            response = requests.put(url, json=payload)
+        elif method == "DELETE":
+            response = requests.delete(url, json=payload)
+        else:
+            return None
+        if response.status_code == 200:
+            return response.json()
+        else:
+            print(f"Response: {response.text}")
+            print(f"Status Code: {response.status_code}")
+    except Exception as e:
+        print(f"Request failed: {e}")
+    return None
 
 
 def subtask_a1():
@@ -96,15 +119,18 @@ def subtask_a1():
             ]
         }
     }
-    requests.post(base_url + "/init", json=payload)
+
+    if send_request(endpoint="/init", method="POST", payload=payload) is None:
+        print("Error in initializing")
+        exit(1)
 
     rtime, wtime = launch_rw_requests()
 
     print("A-1: Default Configuration")
-    print("Total read time:", np.sum(rtime))
-    print("Total write time:", np.sum(wtime))
-    print("Average read time:", np.mean(rtime))
-    print("Average write time:", np.mean(wtime))
+    print("Total read time:", np.sum(rtime), " seconds")
+    print("Total write time:", np.sum(wtime), " seconds")
+    print("Average read time:", np.mean(rtime), " seconds")
+    print("Average write time:", np.mean(wtime), " seconds")
 
     plot_line_chart(x_values=None, y_values=rtime, x_label="Request", y_label="Time (s)",
                     title="Read Time", path="A1_read_time.png")
@@ -157,23 +183,55 @@ def subtask_a2():
             "Server2": [
                 "sh1",
                 "sh3"
+            ],
+            "Server3": [
+                "sh1",
+                "sh2"
+            ],
+            "Server4": [
+                "sh2",
+                "sh3"
+            ],
+            "Server5": [
+                "sh1",
+                "sh3"
+            ],
+            "Server6": [
+                "sh1",
+                "sh2"
+            ],
+            "Server7": [
+                "sh2",
+                "sh3"
+            ],
+            "Server8": [
+                "sh1",
+                "sh3"
+            ],
+            "Server9": [
+                "sh1",
+                "sh2",
+                "sh3"
             ]
         }
     }
-    requests.post(base_url + "/init", json=payload)
+
+    if send_request(endpoint="/init", method="POST", payload=payload) is None:
+        print("Error in initializing")
+        exit(1)
 
     rtime, wtime = launch_rw_requests()
 
-    print("A-1: Default Configuration")
-    print("Total read time:", np.sum(rtime))
-    print("Total write time:", np.sum(wtime))
-    print("Average read time:", np.mean(rtime))
-    print("Average write time:", np.mean(wtime))
+    print("A-2: Increased number of shard replicas")
+    print("Total read time:", np.sum(rtime), " seconds")
+    print("Total write time:", np.sum(wtime), " seconds")
+    print("Average read time:", np.mean(rtime), " seconds")
+    print("Average write time:", np.mean(wtime), " seconds")
 
     plot_line_chart(x_values=None, y_values=rtime, x_label="Request", y_label="Time (s)",
-                    title="Read Time", path="A1_read_time.png")
+                    title="Read Time", path="A2_read_time.png")
     plot_line_chart(x_values=None, y_values=wtime, x_label="Request", y_label="Time (s)",
-                    title="Write Time", path="A1_write_time.png")
+                    title="Write Time", path="A2_write_time.png")
 
 
 def subtask_a3():
@@ -224,7 +282,10 @@ def subtask_a3():
             ]
         }
     }
-    requests.post(base_url + "/init", json=payload)
+
+    if send_request(endpoint="/init", method="POST", payload=payload) is None:
+        print("Error in initializing")
+        exit(1)
 
     write_times = {}
     read_times = {}
@@ -236,9 +297,9 @@ def subtask_a3():
         read_times[n] = {"total": np.sum(rtime), "mean": np.mean(
             rtime), "error": np.std(rtime)}
         payload = {}
-        response = requests.post(base_url + "/add", json=payload)
-        if response.status_code != 200:
-            print("Error:", response.text)
+        if send_request(endpoint="/add", method="POST", payload=payload) is None:
+            print("Error in adding server")
+            exit(1)
 
     print("A-2: Varying Number of Servers")
     plot_line_chart(x_values=list(write_times.keys()), y_values=[write_times[n]["mean"] for n in write_times],

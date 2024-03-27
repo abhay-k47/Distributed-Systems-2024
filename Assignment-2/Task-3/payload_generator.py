@@ -2,15 +2,15 @@ import random
 import string
 
 class PayloadGenerator:
-    def __init__(self):
-        self.available_ids = set(range(100000, 1000000))
+    def __init__(self, limit):
+        self.available_ids = set(range(0, limit))
         self.allocated_ids = set()
 
     def generate_random_payload(self, endpoint):
         if endpoint == "/read":
             return self._read_payload()
         elif endpoint == "/write":
-            return self._write_payload(random.randint(1, 100))
+            return self._write_payload(random.randint(1, 10))
         elif endpoint == "/update":
             return self._update_payload()
         elif endpoint == "/delete":
@@ -27,7 +27,7 @@ class PayloadGenerator:
         data = []
         for _ in range(num_students):
             if len(self.available_ids) == 0:
-                raise ValueError("No more available student IDs.")
+                break
             Stud_id = random.choice(tuple(self.available_ids))
             self.available_ids.remove(Stud_id)
             self.allocated_ids.add(Stud_id)
