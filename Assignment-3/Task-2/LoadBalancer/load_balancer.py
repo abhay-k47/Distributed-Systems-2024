@@ -124,6 +124,8 @@ async def spawn_server(serverName=None, shardList=[], schema={"columns":["Stud_i
                     except Error as e:
                         print("Error while connecting to MySQL", e)
                     cursor=connection.cursor()
+                    #use test_db
+                    cursor.execute("USE test_db")
                     cursor.execute("SELECT * FROM mapT WHERE shard_id=%s",(shard))
                     #use result of previous query
                     result=cursor.fetchall()
@@ -176,6 +178,23 @@ async def periodic_heatbeat_check(interval=2):
                 shardList = []  
                 for shard in servers_to_shard[serverName]:
                     shardList.append(shard)
+                    #remove server from MapT
+                    try:
+                        connection=mysql.connector.connect(
+                            host='metadb',
+                            port=3306,
+                            user='root',
+                            password='Chadwick@12'
+                        )
+                        print("Connected to MySQL: ", connection)
+                    except Error as e:
+                        print("Error while connecting to MySQL", e)
+                    cursor=connection.cursor()
+                    #use test_db
+                    cursor.execute("USE test_db")
+                    cursor.execute("DELETE FROM mapT WHERE server_id=%s",(server_to_id[serverName]))
+                    connection.commit()
+                    connection.close()
                     shard_hash_map[shard].removeServer(server_to_id[serverName])
                 deadServerList.append(serverName)
                 del servers_to_shard[serverName]
@@ -293,6 +312,24 @@ def remove_container(hostname):
         serverId = server_to_id[hostname]
         shardList = servers_to_shard[hostname]
         for shard in shardList:
+            # remove server from the mapT
+            try:
+                    connection=mysql.connector.connect(
+                        host='metadb',
+                        port=3306,
+                        user='root',
+                        password='Chadwick@12'
+                    )
+                    print("Connected to MySQL: ", connection)
+            except Error as e:
+                print("Error while connecting to MySQL", e)
+            cursor=connection.cursor() 
+            #use test_db
+            cursor.execute("USE test_db")
+            # delete the server from mapT
+            cursor.execute("DELETE FROM mapT WHERE server_id=%s",(serverId))
+            connection.commit()
+            connection.close()
             shard_hash_map[shard].removeServer(serverId)
         del servers_to_shard[hostname]
         available_servers.append(serverId)
@@ -410,6 +447,8 @@ async def write():
                 except Error as e:
                     print("Error while connecting to MySQL", e)
                 cursor=connection.cursor() 
+                #use test_db
+                cursor.execute("USE test_db")
                 #find the server_id of the primary server from mapT
                 query = "SELECT server_id FROM mapT WHERE is_primary = TRUE"
                 cursor.execute(query)
@@ -522,8 +561,14 @@ if __name__ == '__main__':
         print("Connected to MySQL: ", connection)
     except Error as e:
         print("Error while connecting to MySQL", e)
-    #create a table named mapT in test_db and drop first if it already exists
+    #drop a database named test_db if it already exists
     cursor=connection.cursor()
+    cursor.execute("DROP DATABASE IF EXISTS test_db")
+    #create a database named test_db
+    cursor.execute("CREATE DATABASE test_db")
+    #use database test_db
+    cursor.execute("USE test_db")
+    #create a table named mapT in test_db and drop first if it already exists
     cursor.execute("DROP TABLE IF EXISTS mapT")
     #create table mapT with columns shard_id(string), server_id(string) and primary(boolean) and then the  primary key ss (shard_id,server_id) 
     sql_create_table = """
@@ -532,6 +577,16 @@ if __name__ == '__main__':
         server_id VARCHAR(255),
         is_primary BOOLEAN,
         PRIMARY KEY (shard_id, server_id)
+    );
+    """
+    cursor.execute(sql_create_table)
+    # create a table shardT Stud_id_low, Shard_id and Shard_size
+    cursor.execute("DROP TABLE IF EXISTS shardT")
+    sql_create_table = """
+    CREATE TABLE IF NOT EXISTS shardT (
+        Stud_id_low INT,
+        Shard_id VARCHAR(255),
+        Shard_size INT
     );
     """
     cursor.execute(sql_create_table)
