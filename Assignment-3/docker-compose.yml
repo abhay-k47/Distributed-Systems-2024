@@ -1,0 +1,56 @@
+version: "3.9"
+
+networks:
+  net1:
+    name: net1
+    driver: bridge
+
+services:
+  lb:
+    build: ./Task-2/LoadBalancer
+    image: lb
+    container_name: lb
+    ports:
+      - "5000:5000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    privileged: true
+    networks:
+      net1:
+        aliases:
+          - lb
+    depends_on:
+      - metadb
+
+  # shm:
+  #   build: ./Task-2/ShardManager
+  #   image: shm
+  #   container_name: shm
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   privileged: true
+  #   networks:
+  #     net1:
+  #       aliases:
+  #         - shm
+
+  # server:
+  #   build: ./Task-1
+  #   image: server
+  #   container_name: server
+  #   networks:
+  #     net1:
+  #       aliases:
+  #         - server
+
+  metadb:
+    image: mysql:8.0-debian
+    container_name: metadb
+    environment:
+      MYSQL_ROOT_PASSWORD: Chadwick@12
+    ports:
+      - "3306:3306"
+    networks:
+      net1:
+        aliases:
+          - metadb
