@@ -224,6 +224,25 @@ async def init():
     global prefix_shard_sizes
 
     shardT = shards
+    #add the data into shardT table
+    try:
+        connection=mysql.connector.connect(
+            host='metadb',
+            port=3306,
+            user='root',
+            password='Chadwick@12'
+        )
+        print("Connected to MySQL: ", connection)
+    except Error as e:
+        print("Error while connecting to MySQL", e)
+    cursor=connection.cursor() 
+    #use test_db
+    cursor.execute("USE test_db")
+    # insert in shardT
+    for shard in shards:
+        cursor.execute("INSERT INTO shardT (Stud_id_low,Shard_id,Shard_size) VALUES (%s,%s,%s)",(shard["Stud_id_low"],shard["Shard_id"],shard["Shard_size"]))
+    connection.commit()
+    connection.close()
     prefix_shard_sizes = [0]
     for shard in shards:
         prefix_shard_sizes.append(prefix_shard_sizes[-1] + shard["Shard_size"])
@@ -285,6 +304,24 @@ async def add_servers():
 
     for shardData in new_shards:
         shard_size = shardData["Shard_size"]
+        # insert shardData into shardT
+        try:
+                    connection=mysql.connector.connect(
+                        host='metadb',
+                        port=3306,
+                        user='root',
+                        password='Chadwick@12'
+                    )
+                    print("Connected to MySQL: ", connection)
+        except Error as e:
+            print("Error while connecting to MySQL", e)
+        cursor=connection.cursor() 
+        #use test_db
+        cursor.execute("USE test_db")
+        # insert in shardT
+        cursor.execute("INSERT INTO shardT (Stud_id_low,Shard_id,Shard_size) VALUES (%s,%s,%s)",(shardData["Stud_id_low"],shardData["Shard_id"],shardData["Shard_size"]))
+        connection.commit()
+        connection.close()
         shardT.append(shardData)
         prefix_shard_sizes.append(prefix_shard_sizes[-1] + shard_size)
 
