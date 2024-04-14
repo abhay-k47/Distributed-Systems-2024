@@ -31,6 +31,34 @@ shard_hash_map:Dict[str, ConsistentHashMap] = defaultdict(ConsistentHashMap)
 shard_write_lock = defaultdict(lambda: asyncio.Lock())
 metadata_lock = asyncio.Lock()
 
+class SQLHandler:
+    def __init__(self):
+        self.mydb = None
+
+    def query(self, sql, value=None):
+        if self.mydb is None:
+            while True:
+                try:
+                    self.mydb = mysql.connector.connect(
+                        host='metadb',
+                        port=3306,
+                        user='root',
+                        password='Chadwick@12',
+                        database='MetaDB'
+                    )
+                except Exception:
+                    pass
+        cursor = self.mydb.cursor()
+        cursor.execute(sql, value) if value else cursor.execute(sql)
+        res = cursor.fetchall()
+        cursor.close()
+        return res
+    
+    def commit(self):
+        self.mydb.commit()
+
+
+sql = SQLHandler()
 # configs server for particular schema and shards
 async def config_server(serverName, schema, shards):
     app.logger.info(f"Configuring {serverName}")
@@ -113,46 +141,19 @@ async def spawn_server(serverName=None, shardList=[], schema={"columns":["Stud_i
 
             async with metadata_lock:
                 for shard in shardList:
-                    try:
-                        connection=mysql.connector.connect(
-                            host='metadb',
-                            port=3306,
-                            user='root',
-                            password='Chadwick@12'
-                        )
-                        print("Connected to MySQL: ", connection)
-                    except Error as e:
-                        print("Error while connecting to MySQL", e)
-                    cursor=connection.cursor()
-                    #use test_db
-                    cursor.execute("USE test_db")
-                    cursor.execute("SELECT * FROM mapT WHERE shard_id=%s",(shard))
-                    #use result of previous query
-                    result=cursor.fetchall()
+                    sql.execute("USE test_db")
+                    result=sql.query("SELECT * FROM mapT WHERE shard_id=%s",(shard))
                     if len(result)==0:
-                        cursor.execute("INSERT INTO mapT (shard_id,server_id,is_primary) VALUES (%s,%s,%s)",(shard,serverId,True))
+                        sql.query("INSERT INTO mapT (shard_id,server_id,is_primary) VALUES (%s,%s,%s)",(shard,serverId,True))
                     else:
-                        cursor.execute("INSERT INTO mapT (shard_id,server_id,is_primary) VALUES (%s,%s,%s)",(shard,serverId,False))
+                        sql.query("INSERT INTO mapT (shard_id,server_id,is_primary) VALUES (%s,%s,%s)",(shard,serverId,False))
 
                     shard_hash_map[shard].addServer(serverId)
                     shard_to_servers.setdefault(shard, []).append(serverName)
                 # add to id_server_map serverId and serverName by creating connection ans using the db
-                try:
-                        connection=mysql.connector.connect(
-                            host='metadb',
-                            port=3306,
-                            user='root',
-                            password='Chadwick@12'
-                        )
-                        print("Connected to MySQL: ", connection)
-                except Error as e:
-                    print("Error while connecting to MySQL", e)
-                cursor=connection.cursor()
-                #use test_db
-                cursor.execute("USE test_db")
-                cursor.execute("INSERT INTO id_server_map (server_id,server_name) VALUES (%s,%s)",(serverId,serverName))
-                connection.commit()
-                connection.close()
+                
+                sql.query("USE test_db")
+                sql.query("INSERT INTO id_server_map (server_id,server_name) VALUES (%s,%s)",(serverId,serverName))
                 id_to_server[serverId] = serverName
                 server_to_id[serverName] = serverId
                 servers_to_shard[serverName] = shardList
@@ -195,22 +196,10 @@ async def periodic_heatbeat_check(interval=2):
                 for shard in servers_to_shard[serverName]:
                     shardList.append(shard)
                     #remove server from MapT
-                    try:
-                        connection=mysql.connector.connect(
-                            host='metadb',
-                            port=3306,
-                            user='root',
-                            password='Chadwick@12'
-                        )
-                        print("Connected to MySQL: ", connection)
-                    except Error as e:
-                        print("Error while connecting to MySQL", e)
-                    cursor=connection.cursor()
+                    
                     #use test_db
-                    cursor.execute("USE test_db")
-                    cursor.execute("DELETE FROM mapT WHERE server_id=%s",(server_to_id[serverName]))
-                    connection.commit()
-                    connection.close()
+                    sql.query("USE test_db")
+                    sql.query("DELETE FROM mapT WHERE server_id=%s",(server_to_id[serverName]))
                     shard_hash_map[shard].removeServer(server_to_id[serverName])
                 deadServerList.append(serverName)
                 del servers_to_shard[serverName]
@@ -241,24 +230,11 @@ async def init():
 
     shardT = shards
     #add the data into shardT table
-    try:
-        connection=mysql.connector.connect(
-            host='metadb',
-            port=3306,
-            user='root',
-            password='Chadwick@12'
-        )
-        print("Connected to MySQL: ", connection)
-    except Error as e:
-        print("Error while connecting to MySQL", e)
-    cursor=connection.cursor() 
     #use test_db
-    cursor.execute("USE test_db")
+    sql.query("USE test_db")
     # insert in shardT
     for shard in shards:
-        cursor.execute("INSERT INTO shardT (Stud_id_low,Shard_id,Shard_size) VALUES (%s,%s,%s)",(shard["Stud_id_low"],shard["Shard_id"],shard["Shard_size"]))
-    connection.commit()
-    connection.close()
+        sql.query("INSERT INTO shardT (Stud_id_low,Shard_id,Shard_size) VALUES (%s,%s,%s)",(shard["Stud_id_low"],shard["Shard_id"],shard["Shard_size"]))
     prefix_shard_sizes = [0]
     for shard in shards:
         prefix_shard_sizes.append(prefix_shard_sizes[-1] + shard["Shard_size"])
@@ -321,23 +297,11 @@ async def add_servers():
     for shardData in new_shards:
         shard_size = shardData["Shard_size"]
         # insert shardData into shardT
-        try:
-                    connection=mysql.connector.connect(
-                        host='metadb',
-                        port=3306,
-                        user='root',
-                        password='Chadwick@12'
-                    )
-                    print("Connected to MySQL: ", connection)
-        except Error as e:
-            print("Error while connecting to MySQL", e)
-        cursor=connection.cursor() 
+         
         #use test_db
-        cursor.execute("USE test_db")
+        sql.query("USE test_db")
         # insert in shardT
-        cursor.execute("INSERT INTO shardT (Stud_id_low,Shard_id,Shard_size) VALUES (%s,%s,%s)",(shardData["Stud_id_low"],shardData["Shard_id"],shardData["Shard_size"]))
-        connection.commit()
-        connection.close()
+        sql.query("INSERT INTO shardT (Stud_id_low,Shard_id,Shard_size) VALUES (%s,%s,%s)",(shardData["Stud_id_low"],shardData["Shard_id"],shardData["Shard_size"]))
         shardT.append(shardData)
         prefix_shard_sizes.append(prefix_shard_sizes[-1] + shard_size)
 
@@ -366,45 +330,17 @@ def remove_container(hostname):
         shardList = servers_to_shard[hostname]
         for shard in shardList:
             # remove server from the mapT
-            try:
-                    connection=mysql.connector.connect(
-                        host='metadb',
-                        port=3306,
-                        user='root',
-                        password='Chadwick@12'
-                    )
-                    print("Connected to MySQL: ", connection)
-            except Error as e:
-                print("Error while connecting to MySQL", e)
-            cursor=connection.cursor() 
-            #use test_db
-            cursor.execute("USE test_db")
+            sql.query("USE test_db")
             # delete the server from mapT
-            cursor.execute("DELETE FROM mapT WHERE server_id=%s",(serverId))
-            connection.commit()
-            connection.close()
+            sql.query("DELETE FROM mapT WHERE server_id=%s",(serverId))
             shard_hash_map[shard].removeServer(serverId)
         del servers_to_shard[hostname]
         available_servers.append(serverId)
         server_to_id.pop(hostname)
         id_to_server.pop(serverId)
-        try:
-                    connection=mysql.connector.connect(
-                        host='metadb',
-                        port=3306,
-                        user='root',
-                        password='Chadwick@12'
-                    )
-                    print("Connected to MySQL: ", connection)
-        except Error as e:
-            print("Error while connecting to MySQL", e)
-        cursor=connection.cursor() 
-        #use test_db
-        cursor.execute("USE test_db")
+        sql.query("USE test_db")
         # delete from id_server_map where server id is serverId
-        cursor.execute("DELETE FROM id_server_map WHERE server_id=%s",(serverId))
-        connection.commit()
-        connection.close()
+        sql.query("DELETE FROM id_server_map WHERE server_id=%s",(serverId))
         os.system(f"docker stop {hostname} && docker rm {hostname}")
     except Exception as e:
         app.logger.error(f"<ERROR> {e} occurred while removing hostname={hostname}")
@@ -506,24 +442,11 @@ async def write():
                 tasks = []
                 #write to the server which is the primary one only
                
-                try:
-                    connection=mysql.connector.connect(
-                        host='metadb',
-                        port=3306,
-                        user='root',
-                        password='Chadwick@12'
-                    )
-                    print("Connected to MySQL: ", connection)
-                except Error as e:
-                    print("Error while connecting to MySQL", e)
-                cursor=connection.cursor() 
-                #use test_db
-                cursor.execute("USE test_db")
+                sql.query("USE test_db")
                 #find the server_id of the primary server from mapT
                 query = "SELECT server_id FROM mapT WHERE is_primary = TRUE"
-                cursor.execute(query)
                 # Fetching the first result
-                server = cursor.fetchone()
+                server = sql.query(query)[0][0]
                 # for server in shard_to_servers[shard]:
                 app.logger.info(f"Writing to {server} for shard {shard}")
                 payload = {"shard": shard,"data": data,"primary": True}
@@ -620,55 +543,4 @@ async def startup():
 async def cleanup():
     app.logger.info("Stopping the load balancer")
 if __name__ == '__main__':
-    time.sleep(30)
-    try:
-        connection=mysql.connector.connect(
-            host='metadb',
-            port=3306,
-            user='root',
-            password='Chadwick@12'
-        )
-        print("Connected to MySQL: ", connection)
-    except Error as e:
-        print("Error while connecting to MySQL", e)
-    #drop a database named test_db if it already exists
-    cursor=connection.cursor()
-    cursor.execute("DROP DATABASE IF EXISTS test_db")
-    #create a database named test_db
-    cursor.execute("CREATE DATABASE test_db")
-    #use database test_db
-    cursor.execute("USE test_db")
-    #create a table named mapT in test_db and drop first if it already exists
-    cursor.execute("DROP TABLE IF EXISTS mapT")
-    #create table mapT with columns shard_id(string), server_id(string) and primary(boolean) and then the  primary key ss (shard_id,server_id) 
-    sql_create_table = """
-    CREATE TABLE IF NOT EXISTS mapT (
-        shard_id VARCHAR(255),
-        server_id VARCHAR(255),
-        is_primary BOOLEAN,
-        PRIMARY KEY (shard_id, server_id)
-    );
-    """
-    cursor.execute(sql_create_table)
-    # create a table shardT Stud_id_low, Shard_id and Shard_size
-    cursor.execute("DROP TABLE IF EXISTS shardT")
-    sql_create_table = """
-    CREATE TABLE IF NOT EXISTS shardT (
-        Stud_id_low INT,
-        Shard_id VARCHAR(255),
-        Shard_size INT
-    );
-    """
-    cursor.execute(sql_create_table)
-    # create a map named id_server_map having server id(int) and server name(string) with server id as the primary key
-    cursor.execute("DROP TABLE IF EXISTS id_server_map")
-    sql_create_table = """
-    CREATE TABLE IF NOT EXISTS id_server_map (
-        server_id INT PRIMARY KEY,
-        server_name VARCHAR(255)
-    );
-    """
-    cursor.execute(sql_create_table)
-    connection.commit()
-    connection.close()
-    app.run(host='0.0.0.0', port=PORT, debug=False)
+  app.run(host='0.0.0.0', port=PORT, debug=False)

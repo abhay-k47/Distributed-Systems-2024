@@ -197,7 +197,7 @@ async def primary_elect():
 
 
 @app.before_serving
-def startup():
+async def startup():
     app.logger.info("Starting the Shard Manager")
     loop = asyncio.get_event_loop()
     loop.create_task(periodic_heatbeat_check())
