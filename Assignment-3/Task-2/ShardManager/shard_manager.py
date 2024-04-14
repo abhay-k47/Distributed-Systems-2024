@@ -270,3 +270,65 @@ async def periodic_heatbeat_check(interval=2):
         await asyncio.sleep(interval)
 
 #  /primary elect, method=GET) - elects a new primary for a shard
+@app.route('/primary_elect', methods=['GET'])
+async def relect():
+    payload = await request.get_json()
+    servername=payload['server']
+    # get server id from servername
+    try:
+                        connection=mysql.connector.connect(
+                            host='metadb',
+                            port=3306,
+                            user='root',
+                            password='Chadwick@12'
+                        )
+                        print("Connected to MySQL: ", connection)
+    except Error as e:
+        print("Error while connecting to MySQL", e)
+    cursor=connection.cursor()
+    #use test_db
+    cursor.execute("USE test_db")
+    # get serverId from serverName
+    cursor.execute("SELECT server_id FROM id_server_map WHERE server_name=%s",(servername))
+    serverId=cursor.fetchone()[0]
+    # get all shards corresponding to serverId where it is primary
+    cursor.execute("SELECT shard_id FROM mapT WHERE server_id=%s and is_primary=%s",(serverId,True))
+    shards=cursor.fetchall()
+    # check if the server is primary for any shard
+    for shard in shards:
+        # select another primary for this shard and update mapT
+        cursor.execute("SELECT server_id FROM mapT WHERE shard_id=%s and is_primary=%s",(shard,False))
+        servers=cursor.fetchall()
+        # build a list with serverId,seq
+        highest_seq_no=0
+        new_primary=None
+        for serverId in servers:
+            # get servername from serverId
+            cursor.execute("SELECT server_name FROM id_server_map WHERE server_id=%s",(serverId))
+            serverName=cursor.fetchone()[0]
+            # send post requests to servers asking for latest sequence number 
+            async with aiohttp.ClientSession() as session:
+                # send the shard as payload
+                payload={"shard": shard}
+                async with session.get(f'http://{serverName}:5000/get_seq',json=payload) as resp:
+                    if resp.status==200:
+                        result = await resp.json()
+                        seq=result['seq']
+                        if (seq>highest_seq_no):
+                            highest_seq_no=seq
+                            new_primary=serverId
+                        
+        # set the is_primary to true for the new_primary
+        cursor.execute("UPDATE mapT SET is_primary = %s WHERE server_id = %s and shard_id=%s", (True, new_primary,shard))
+    connection.commit()
+    connection.close()
+    # return the response code 200 that primary elect is successful 
+    return Response(status=200)
+    
+        
+        
+                    
+                    
+
+        
+
