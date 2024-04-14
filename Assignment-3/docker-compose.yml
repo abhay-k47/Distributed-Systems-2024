@@ -22,34 +22,39 @@ services:
     depends_on:
       - metadb
 
-  # shm:
-  #   build: ./Task-2/ShardManager
-  #   image: shm
-  #   container_name: shm
-  #   volumes:
-  #     - /var/run/docker.sock:/var/run/docker.sock
-  #   privileged: true
-  #   networks:
-  #     net1:
-  #       aliases:
-  #         - shm
+  shmgr:
+    build: ./Task-2/ShardManager
+    image: shmgr
+    container_name: shmgr
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    privileged: true
+    networks:
+      net1:
+        aliases:
+          - shmgr
+    depends_on:
+      - metadb
 
-  # server:
-  #   build: ./Task-1
-  #   image: server
-  #   container_name: server
-  #   networks:
-  #     net1:
-  #       aliases:
-  #         - server
+  server:
+    build: ./Task-1
+    image: server
+    container_name: server
+    networks:
+      net1:
+        aliases:
+          - server
 
   metadb:
     image: mysql:8.0-debian
     container_name: metadb
     environment:
       MYSQL_ROOT_PASSWORD: Chadwick@12
+      MYSQL_DATABASE: MetaDB
     ports:
       - "3306:3306"
+    volumes:
+      - ./Task-2/MetaDB:/docker-entrypoint-initdb.d
     networks:
       net1:
         aliases:

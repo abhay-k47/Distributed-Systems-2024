@@ -2,7 +2,7 @@ build:
 	sudo docker-compose build
 
 up:
-	sudo docker-compose up lb metadb
+	sudo docker-compose up metadb lb shmgr
 
 down:
 	sudo docker-compose down
