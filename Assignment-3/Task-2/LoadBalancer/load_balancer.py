@@ -136,7 +136,23 @@ async def spawn_server(serverName=None, shardList=[], schema={"columns":["Stud_i
 
                     shard_hash_map[shard].addServer(serverId)
                     shard_to_servers.setdefault(shard, []).append(serverName)
-                
+                # add to id_server_map serverId and serverName by creating connection ans using the db
+                try:
+                        connection=mysql.connector.connect(
+                            host='metadb',
+                            port=3306,
+                            user='root',
+                            password='Chadwick@12'
+                        )
+                        print("Connected to MySQL: ", connection)
+                except Error as e:
+                    print("Error while connecting to MySQL", e)
+                cursor=connection.cursor()
+                #use test_db
+                cursor.execute("USE test_db")
+                cursor.execute("INSERT INTO id_server_map (server_id,server_name) VALUES (%s,%s)",(serverId,serverName))
+                connection.commit()
+                connection.close()
                 id_to_server[serverId] = serverName
                 server_to_id[serverName] = serverId
                 servers_to_shard[serverName] = shardList
@@ -372,6 +388,23 @@ def remove_container(hostname):
         available_servers.append(serverId)
         server_to_id.pop(hostname)
         id_to_server.pop(serverId)
+        try:
+                    connection=mysql.connector.connect(
+                        host='metadb',
+                        port=3306,
+                        user='root',
+                        password='Chadwick@12'
+                    )
+                    print("Connected to MySQL: ", connection)
+        except Error as e:
+            print("Error while connecting to MySQL", e)
+        cursor=connection.cursor() 
+        #use test_db
+        cursor.execute("USE test_db")
+        # delete from id_server_map where server id is serverId
+        cursor.execute("DELETE FROM id_server_map WHERE server_id=%s",(serverId))
+        connection.commit()
+        connection.close()
         os.system(f"docker stop {hostname} && docker rm {hostname}")
     except Exception as e:
         app.logger.error(f"<ERROR> {e} occurred while removing hostname={hostname}")
@@ -627,5 +660,15 @@ if __name__ == '__main__':
     );
     """
     cursor.execute(sql_create_table)
+    # create a map named id_server_map having server id(int) and server name(string) with server id as the primary key
+    cursor.execute("DROP TABLE IF EXISTS id_server_map")
+    sql_create_table = """
+    CREATE TABLE IF NOT EXISTS id_server_map (
+        server_id INT PRIMARY KEY,
+        server_name VARCHAR(255)
+    );
+    """
+    cursor.execute(sql_create_table)
+    connection.commit()
     connection.close()
     app.run(host='0.0.0.0', port=PORT, debug=False)
