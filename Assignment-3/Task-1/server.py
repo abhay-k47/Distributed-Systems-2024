@@ -10,7 +10,7 @@ sql = SQLHandler()
 server_name = os.environ['SERVER_NAME']
 
 # secondary_servers = {}
-seqNo = 1
+seqNo = 0
 all_WAL = {}    # shard to WAL mapping
 '''
 Schema for individual WAL: List of dicts (Logs which are not commited by atleast one server)
@@ -20,6 +20,16 @@ Schema for individual WAL: List of dicts (Logs which are not commited by atleast
         "data" : data
     }
 '''
+
+@app.route('/get_seq', methods=['GET'])
+def get_seqNo():            # returns latest seqNo for a particular shard, used for leader election
+    payload = request.get_json()
+    shard = payload.get('shard')
+
+    if shard not in all_WAL:
+        return jsonify({"message": "Invalid shard", "status": "error"}), 400
+    return jsonify({"seq" : all_WAL[shard][-1]["seqNo"], "status" : "success"}), 200
+
 @app.route('/config', methods=['POST'])
 def configure_server():
     payload = request.get_json()
@@ -95,6 +105,7 @@ async def write_primary(shard, data, secondary_servers):
 
     # First adding in log
     WAL = all_WAL[shard]
+    seqNo += 1
     WAL.append({"seqNo" : seqNo, "type" : "write", "data" : data})
 
     results = []
@@ -108,6 +119,8 @@ async def write_primary(shard, data, secondary_servers):
         if not isinstance(result, Exception) and result.status == 200:
             cnt += 1
     if cnt <= len(secondary_servers)/2:
+        seqNo -= 1
+        WAL.pop()
         return jsonify({"message": "Error while writing", "status": "failure"}), 500
     
     # Writing as majority secondary servers have commited
@@ -179,6 +192,7 @@ async def update_primary(shard, data, secondary_servers):
 
     # First adding in log
     WAL = all_WAL[shard]
+    seqNo += 1
     WAL.append({"seqNo" : seqNo, "type" : "update", "data" : data})
 
     results = []
@@ -192,11 +206,15 @@ async def update_primary(shard, data, secondary_servers):
         if not isinstance(result, Exception) and result.status == 200:
             cnt += 1
     if cnt <= len(secondary_servers)/2:
+        seqNo -= 1
+        WAL.pop()
         return jsonify({"message": "Error while updating", "status": "failure"}), 500
     
     # Updating as majority secondary servers have commited
     sql.UseDB(dbname=shard)
     if not sql.Exists(table_name='studT', col="Stud_id", val=data["Stud_id"]):
+        seqNo -= 1
+        WAL.pop()
         return jsonify({"message": f"Data entry for Stud_id:{data['Stud_id']} not found", "status": "error"}), 404
     sql.Update(table_name='studT', col="Stud_id", val=data["Stud_id"], data=data)
 
@@ -229,6 +247,7 @@ async def del_primary(shard, data, secondary_servers):
     
     # First adding in log
     WAL = all_WAL[shard]
+    seqNo += 1
     WAL.append({"seqNo" : seqNo, "type" : "delete", "data" : data})
 
     results = []
@@ -242,12 +261,16 @@ async def del_primary(shard, data, secondary_servers):
         if not isinstance(result, Exception) and result.status == 200:
             cnt += 1
     if cnt <= len(secondary_servers)/2:
+        seqNo -= 1
+        WAL.pop()
         return jsonify({"message": "Error while deleting", "status": "failure"}), 500
     
     # Deleting as majority secondary servers have commited
     sql.UseDB(dbname=shard)
     Stud_id = data["Stud_id"]
     if not sql.Exists(table_name='studT', col="Stud_id", val=Stud_id):
+        seqNo -= 1
+        WAL.pop()
         return jsonify({"message": f"Data entry for Stud_id:{Stud_id} not found", "status": "error"}), 404
     sql.Delete(table_name='studT', col="Stud_id", val=Stud_id)
 
