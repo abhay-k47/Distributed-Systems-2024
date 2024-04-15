@@ -143,7 +143,7 @@ async def spawn_server(serverName=None, shardList=[], schema={"columns":["Stud_i
 
             async with metadata_lock:
                 for shard in shardList:
-                    sql.execute("USE MetaDB")
+                    sql.query("USE MetaDB")
                     result=sql.query("SELECT * FROM mapT WHERE shard_id=%s",(shard))
                     if len(result)==0:
                         sql.query("INSERT INTO mapT (shard_id,server_id,is_primary) VALUES (%s,%s,%s)",(shard,serverId,True))
@@ -236,7 +236,7 @@ async def init():
     sql.query("USE MetaDB")
     # insert in shardT
     for shard in shards:
-        sql.query("INSERT INTO shardT (Stud_id_low,Shard_id,Shard_size) VALUES (%s,%s,%s)",(shard["Stud_id_low"],shard["Shard_id"],shard["Shard_size"]))
+        sql.query("INSERT INTO ShardT (Stud_id_low,Shard_id,Shard_size) VALUES (%s,%s,%s)",(shard["Stud_id_low"],shard["Shard_id"],shard["Shard_size"]))
     prefix_shard_sizes = [0]
     for shard in shards:
         prefix_shard_sizes.append(prefix_shard_sizes[-1] + shard["Shard_size"])
@@ -303,7 +303,7 @@ async def add_servers():
         #use MetaDB
         sql.query("USE MetaDB")
         # insert in shardT
-        sql.query("INSERT INTO shardT (Stud_id_low,Shard_id,Shard_size) VALUES (%s,%s,%s)",(shardData["Stud_id_low"],shardData["Shard_id"],shardData["Shard_size"]))
+        sql.query("INSERT INTO ShardT (Stud_id_low,Shard_id,Shard_size) VALUES (%s,%s,%s)",(shardData["Stud_id_low"],shardData["Shard_id"],shardData["Shard_size"]))
         shardT.append(shardData)
         prefix_shard_sizes.append(prefix_shard_sizes[-1] + shard_size)
 
