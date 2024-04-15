@@ -37,7 +37,7 @@ class SQLHandler:
 
     def query(self, sql, value=None):
         if self.mydb is None:
-            while True:
+            while self.mydb is None:
                 try:
                     self.mydb = mysql.connector.connect(
                         host='metadb',
@@ -46,8 +46,10 @@ class SQLHandler:
                         password='Chadwick@12',
                         database='MetaDB'
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    time.sleep(5)
+                    logging.error(
+                        f"Error while connecting to MetaDB, got exception {e}")
         cursor = self.mydb.cursor()
         cursor.execute(sql, value) if value else cursor.execute(sql)
         res = cursor.fetchall()

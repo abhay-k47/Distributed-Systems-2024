@@ -74,7 +74,7 @@ async def restore_shards(serverName, shards):
 async def get_shard_data(shard):
     print(f"Getting shard data for {shard} from primary server")
     serverName = sql.query(
-        f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard} AND m.Is_primary = true")
+        f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard} AND m.Is_primary = true")[0]
     async with aiohttp.ClientSession() as session:
         payload = {"shards": [shard]}
         async with session.get(f'http://{serverName}:5000/copy', json=payload) as resp:
@@ -98,7 +98,7 @@ async def write_shard_data(serverName, shard, data):
 async def respawn_server(serverName, shards, schema={"columns": ["Stud_id", "Stud_name", "Stud_marks"], "dtypes": ["Number", "String", "Number"]}):
 
     serverId = sql.query(
-        f'SELECT Server_id from ServerT WHERE Server_name="{serverName}"')
+        f'SELECT Server_id from ServerT WHERE Server_name="{serverName}"')[0]
     containerName = serverName
     res = os.popen(
         f"docker run --name {containerName} --network net1 --network-alias {containerName} -e SERVER_NAME={containerName} -d server").read()
@@ -113,13 +113,13 @@ async def respawn_server(serverName, shards, schema={"columns": ["Stud_id", "Stu
             query = ""
             for shard in shards:
                 primary = sql.query(
-                    f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard} AND m.Is_primary = true")
+                    f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard} AND m.Is_primary = true")[0]
                 if primary == serverName:
                     sec_servers = sql.query(
                         f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard} AND m.Is_primary = false")
                     new_primary = await elect_primary(shard, sec_servers)
                     primary_id = sql.query(
-                        f"SELECT Server_id FROM ServerT WHERE Server_name='{new_primary}'")
+                        f"SELECT Server_id FROM ServerT WHERE Server_name='{new_primary}'")[0]
                     query += f"UPDATE MapT SET Is_primary=false WHERE Shard_id={shard} AND Server_id={serverId}; UPDATE MapT SET Is_primary=true WHERE Shard_id={shard} AND Server_id={primary_id}; "
             if query != "":
                 sql.query(query)
@@ -159,7 +159,7 @@ async def periodic_heatbeat_check(interval=60):
             if isUp == False:
                 app.logger.error(f"Server {serverName} is down")
                 serverId = sql.query(
-                    f'SELECT Server_id from ServerT WHERE Server_name={serverName}')
+                    f'SELECT Server_id from ServerT WHERE Server_name={serverName}')[0]
                 shardList = sql.query(
                     f'SELECT Shard_id from MapT WHERE Server_id={serverId}')
                 deadServerList.append(serverName)
@@ -192,7 +192,7 @@ async def primary_elect():
         return Response(status=400, response="Server name not provided")
     try:
         serverId = sql.query(
-            f'SELECT Server_id from ServerT WHERE Server_name={servername}')
+            f'SELECT Server_id from ServerT WHERE Server_name={servername}')[0]
         shards = sql.query(
             f'SELECT Shard_id from MapT WHERE Server_id={serverId} AND Is_primary=true')
         query = ""
@@ -201,7 +201,7 @@ async def primary_elect():
                 f'SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard} AND m.Is_primary = false')
             new_primary = await elect_primary(shard, sec_servers)
             primary_id = sql.query(
-                f'SELECT Server_id FROM ServerT WHERE Server_name={new_primary}')
+                f'SELECT Server_id FROM ServerT WHERE Server_name={new_primary}')[0]
             query += f'UPDATE MapT SET Is_primary=false WHERE Shard_id={shard} AND Server_id={serverId}; UPDATE MapT SET Is_primary=true WHERE Shard_id={shard} AND Server_id={primary_id}; '
         if query != "":
             sql.query(query)
