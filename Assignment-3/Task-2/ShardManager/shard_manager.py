@@ -68,6 +68,8 @@ async def restore_shards(serverName, shards):
     for shard in shards:
         shard_data = await get_shard_data(shard)
         await write_shard_data(serverName, shard, shard_data)
+        shard_WAL = await get_shard_WAL(shard)
+        await write_shard_WAL(serverName, shard, shard_WAL)
 
 
 # gets the shard data from available server
@@ -90,6 +92,26 @@ async def write_shard_data(serverName, shard, data):
     async with aiohttp.ClientSession() as session:
         payload = {"shard": shard, "data": data, "sec_servers": sec_servers}
         async with session.post(f'http://{serverName}:5000/write', json=payload) as resp:
+            return resp.status == 200
+
+
+async def get_shard_WAL(shard):
+    print(f"Getting shard WAL for {shard} from primary server")
+    serverName = sql.query(
+        f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard} AND m.Is_primary = true")[0]
+    async with aiohttp.ClientSession() as session:
+        payload = {"shard": shard}
+        async with session.get(f'http://{serverName}:5000/get_wal', json=payload) as resp:
+            result = await resp.json()
+            wal = result.get("WAL", None)
+            return wal if resp.status == 200 else None
+
+
+# writes the shard data into server
+async def write_shard_WAL(serverName, shard, WAL):
+    async with aiohttp.ClientSession() as session:
+        payload = {"shard": shard, "WAL": WAL}
+        async with session.post(f'http://{serverName}:5000/set_wal', json=payload) as resp:
             return resp.status == 200
 
 # first spawns server, configures it, restores shards, then updates the required maps
@@ -184,7 +206,7 @@ async def elect_primary(shard, sec_servers):
     return new_primary
 
 
-@app.route('/primary_elect', methods=['GET'])
+@app.route('/primary_elect', methods=['PUT'])
 async def primary_elect():
     payload = await request.get_json()
     servername = payload.get('server', None)
