@@ -27,6 +27,7 @@ class SQLHandler:
                 time.sleep(5)
                 logging.error(
                     f"Error while connecting to MetaDB, got exception {e}")
+        self.mydb.commit()
         cursor = self.mydb.cursor()
         try:
             cursor.execute(sql, value) if value else cursor.execute(sql)
@@ -34,11 +35,9 @@ class SQLHandler:
             logging.error(f'Error while executing {sql}, got exception {e}')
         res = cursor.fetchall()
         cursor.close()
+        self.mydb.commit()
+        app.logger.debug(f"Query: {sql} returned {res}")
         return res
-
-    def commit(self):
-        if self.mydb is not None:
-            self.mydb.commit()
 
     def close(self):
         if self.mydb is not None:
@@ -76,7 +75,7 @@ async def restore_shards(serverName, shards):
 async def get_shard_data(shard):
     print(f"Getting shard data for {shard} from primary server")
     serverName = sql.query(
-        f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard} AND m.Is_primary = true")[0]
+        f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id='{shard}' AND m.Is_primary = true")[0][0]
     async with aiohttp.ClientSession() as session:
         payload = {"shards": [shard]}
         async with session.get(f'http://{serverName}:5000/copy', json=payload) as resp:
@@ -87,8 +86,9 @@ async def get_shard_data(shard):
 
 # writes the shard data into server
 async def write_shard_data(serverName, shard, data):
-    sec_servers = sql.query(
-        f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard} AND m.Is_primary = false")
+    res = sql.query(
+        f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id='{shard}' AND m.Is_primary = false")
+    sec_servers = [r[0] for r in res]
     async with aiohttp.ClientSession() as session:
         payload = {"shard": shard, "data": data, "sec_servers": sec_servers}
         async with session.post(f'http://{serverName}:5000/write', json=payload) as resp:
@@ -98,7 +98,7 @@ async def write_shard_data(serverName, shard, data):
 async def get_shard_WAL(shard):
     print(f"Getting shard WAL for {shard} from primary server")
     serverName = sql.query(
-        f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard} AND m.Is_primary = true")[0]
+        f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id='{shard}' AND m.Is_primary = true")[0][0]
     async with aiohttp.ClientSession() as session:
         payload = {"shard": shard}
         async with session.get(f'http://{serverName}:5000/get_wal', json=payload) as resp:
@@ -120,7 +120,7 @@ async def write_shard_WAL(serverName, shard, WAL):
 async def respawn_server(serverName, shards, schema={"columns": ["Stud_id", "Stud_name", "Stud_marks"], "dtypes": ["Number", "String", "Number"]}):
 
     serverId = sql.query(
-        f'SELECT Server_id from ServerT WHERE Server_name="{serverName}"')[0]
+        f'SELECT Server_id from ServerT WHERE Server_name="{serverName}"')[0][0]
     containerName = serverName
     res = os.popen(
         f"docker run --name {containerName} --network net1 --network-alias {containerName} -e SERVER_NAME={containerName} -d server").read()
@@ -132,22 +132,21 @@ async def respawn_server(serverName, shards, schema={"columns": ["Stud_id", "Stu
         try:
             await config_server(serverName, schema, shards)
             app.logger.info(f"Configured {containerName}")
-            query = ""
             for shard in shards:
                 primary = sql.query(
-                    f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard} AND m.Is_primary = true")[0]
+                    f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id='{shard}' AND m.Is_primary = true")[0][0]
                 if primary == serverName:
-                    sec_servers = sql.query(
-                        f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard} AND m.Is_primary = false")
+                    res = sql.query(
+                        f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id='{shard}' AND m.Is_primary = false")
+                    sec_servers = [r[0] for r in res]
                     new_primary = await elect_primary(shard, sec_servers)
                     primary_id = sql.query(
-                        f"SELECT Server_id FROM ServerT WHERE Server_name='{new_primary}'")[0]
-                    query += f"UPDATE MapT SET Is_primary=false WHERE Shard_id={shard} AND Server_id={serverId}; UPDATE MapT SET Is_primary=true WHERE Shard_id={shard} AND Server_id={primary_id}; "
-            if query != "":
-                sql.query(query)
+                        f"SELECT Server_id FROM ServerT WHERE Server_name='{new_primary}'")[0][0]
+                    sql.query(
+                        f"UPDATE MapT SET Is_primary=false WHERE Shard_id='{shard}' AND Server_id={serverId}")
+                    sql.query(
+                        f"UPDATE MapT SET Is_primary=true WHERE Shard_id='{shard}' AND Server_id={primary_id}")
             await restore_shards(serverName, shards)
-            if query != "":
-                sql.commit()
             app.logger.info(f"Restored shards for {containerName}")
         except Exception as e:
             app.logger.error(
@@ -172,7 +171,8 @@ async def check_heartbeat(serverName, log=True):
 async def periodic_heatbeat_check(interval=60):
     app.logger.info("Starting periodic heartbeat check")
     while True:
-        servers = sql.query("SELECT Server_name FROM ServerT")
+        res = sql.query("SELECT Server_name FROM ServerT")
+        servers = [r[0] for r in res]
         deadServerList = []
         tasks = [check_heartbeat(serverName) for serverName in servers]
         results = await asyncio.gather(*tasks)
@@ -180,18 +180,19 @@ async def periodic_heatbeat_check(interval=60):
         for serverName, isUp in results:
             if isUp == False:
                 app.logger.error(f"Server {serverName} is down")
-                serverId = sql.query(
-                    f'SELECT Server_id from ServerT WHERE Server_name={serverName}')[0]
-                shardList = sql.query(
-                    f'SELECT Shard_id from MapT WHERE Server_id={serverId}')
                 deadServerList.append(serverName)
         for serverName in deadServerList:
+            serverId = sql.query(
+                f'SELECT Server_id from ServerT WHERE Server_name="{serverName}"')[0][0]
+            res = sql.query(
+                f'SELECT Shard_id from MapT WHERE Server_id={serverId}')
+            shardList = [r[0] for r in res]
             await respawn_server(serverName, shardList)
         await asyncio.sleep(interval)
 
 
 async def elect_primary(shard, sec_servers):
-    highest_seq_no = 0
+    highest_seq_no = -1
     new_primary = None
     for serverName in sec_servers:
         async with aiohttp.ClientSession() as session:
@@ -214,20 +215,21 @@ async def primary_elect():
         return Response(status=400, response="Server name not provided")
     try:
         serverId = sql.query(
-            f'SELECT Server_id from ServerT WHERE Server_name={servername}')[0]
-        shards = sql.query(
+            f'SELECT Server_id from ServerT WHERE Server_name="{servername}"')[0][0]
+        res = sql.query(
             f'SELECT Shard_id from MapT WHERE Server_id={serverId} AND Is_primary=true')
-        query = ""
+        shards = [r[0] for r in res]
         for shard in shards:
-            sec_servers = sql.query(
-                f'SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard} AND m.Is_primary = false')
+            res = sql.query(
+                f'SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id="{shard}" AND m.Is_primary = false')
+            sec_servers = [r[0] for r in res]
             new_primary = await elect_primary(shard, sec_servers)
             primary_id = sql.query(
-                f'SELECT Server_id FROM ServerT WHERE Server_name={new_primary}')[0]
-            query += f'UPDATE MapT SET Is_primary=false WHERE Shard_id={shard} AND Server_id={serverId}; UPDATE MapT SET Is_primary=true WHERE Shard_id={shard} AND Server_id={primary_id}; '
-        if query != "":
-            sql.query(query)
-            sql.commit()
+                f'SELECT Server_id FROM ServerT WHERE Server_name="{new_primary}"')[0][0]
+            sql.query(
+                f'UPDATE MapT SET Is_primary=false WHERE Shard_id="{shard}" AND Server_id={serverId}')
+            sql.query(
+                f'UPDATE MapT SET Is_primary=true WHERE Shard_id="{shard}" AND Server_id={primary_id}')
     except Exception as e:
         app.logger.error(
             f"Error while electing primary for {servername}, got exception {e}")

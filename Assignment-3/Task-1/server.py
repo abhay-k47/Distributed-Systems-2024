@@ -45,7 +45,7 @@ def get_seqNo():            # returns latest seqNo for a particular shard, used 
     shard = payload.get('shard')
     if shard not in all_WAL:
         return jsonify({"message": "Invalid shard", "status": "error"}), 400
-    return jsonify({"seq" : all_WAL[shard][-1]["seqNo"], "status" : "success"}), 200
+    return jsonify({"seq" : seqNo, "status" : "success"}), 200
 
 @app.route('/config', methods=['POST'])
 def configure_server():
@@ -60,6 +60,7 @@ def configure_server():
         return jsonify({"message": "Invalid schema", "status": "error"}), 400
 
     for shard in shards:
+        all_WAL[shard] = []
         sql.UseDB(dbname=shard)
         sql.CreateTable(
             tabname='studT', columns=schema['columns'], dtypes=schema['dtypes'], prikeys=['Stud_id'])

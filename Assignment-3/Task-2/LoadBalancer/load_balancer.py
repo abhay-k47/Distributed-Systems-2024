@@ -18,29 +18,30 @@ class SQLHandler:
         self.mydb = None
 
     def query(self, sql, value=None):
-        if self.mydb is None:
-            while self.mydb is None:
-                try:
-                    self.mydb = mysql.connector.connect(
-                        host='metadb',
-                        port=3306,
-                        user='root',
-                        password='Chadwick@12',
-                        database='MetaDB'
-                    )
-                except Exception as e:
-                    time.sleep(5)
-                    logging.error(
-                        f"Error while connecting to MetaDB, got exception {e}")
+        while self.mydb is None:
+            try:
+                self.mydb = mysql.connector.connect(
+                    host='metadb',
+                    port=3306,
+                    user='root',
+                    password='Chadwick@12',
+                    database='MetaDB'
+                )
+            except Exception as e:
+                time.sleep(5)
+                logging.error(
+                    f"Error while connecting to MetaDB, got exception {e}")
+        self.mydb.commit()
         cursor = self.mydb.cursor()
-        cursor.execute(sql, value) if value else cursor.execute(sql)
+        try:
+            cursor.execute(sql, value) if value else cursor.execute(sql)
+        except Error as e:
+            logging.error(f'Error while executing {sql}, got exception {e}')
         res = cursor.fetchall()
         cursor.close()
+        self.mydb.commit()
+        app.logger.info(f"Query: {sql} returned {res}")
         return res
-    
-    def commit(self):
-        if self.mydb is not None:
-            self.mydb.commit()
 
     def close(self):
         if self.mydb is not None:
@@ -63,11 +64,12 @@ async def config_server(serverName, schema, shards):
     async with aiohttp.ClientSession() as session:
         payload = {"schema": schema, "shards": shards}
         async with session.post(f'http://{serverName}:5000/config', json=payload) as resp:
+            app.logger.info(f"/config response from {serverName}: {resp}")
             return resp.status == 200
 
 
 async def get_shard_data(shard):
-    serverName = sql.query(f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard} AND m.Is_primary = true")[0]
+    serverName = sql.query(f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id='{shard}' AND m.Is_primary = true")[0][0]
     app.logger.info(f"Getting shard data for {shard} from primary server: {serverName}")
     async with aiohttp.ClientSession() as session:
         payload = {"shards": [shard]}
@@ -78,19 +80,22 @@ async def get_shard_data(shard):
 
 
 async def write_shard_data(serverName, shard, data):
-    sec_servers = sql.query(f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard} AND m.Is_primary = false")
+    res = sql.query(f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id='{shard}' AND m.Is_primary = false")
+    sec_servers = [r[0] for r in res]
     async with aiohttp.ClientSession() as session:
         payload = {"shard": shard, "data": data, "sec_servers": sec_servers}
         async with session.post(f'http://{serverName}:5000/write', json=payload) as resp:
+            app.logger.info(f"/write response from {serverName}: {resp}")
             return resp.status == 200
         
 
 async def get_shard_WAL(shard):
     print(f"Getting shard WAL for {shard} from primary server")
-    serverName = sql.query(f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard} AND m.Is_primary = true")[0]
+    serverName = sql.query(f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id='{shard}' AND m.Is_primary = true")[0][0]
     async with aiohttp.ClientSession() as session:
         payload = {"shard": shard}
         async with session.get(f'http://{serverName}:5000/get_wal', json=payload) as resp:
+            app.logger.info(f"/get_wal response from {serverName}: {resp}")
             result = await resp.json()
             wal = result.get("WAL", None)
             return wal if resp.status == 200 else None
@@ -100,6 +105,7 @@ async def write_shard_WAL(serverName, shard, WAL):
     async with aiohttp.ClientSession() as session:
         payload = {"shard": shard, "WAL": WAL}
         async with session.post(f'http://{serverName}:5000/set_wal', json=payload) as resp:
+            app.logger.info(f"/set_wal response from {serverName}: {resp}")
             return resp.status == 200
 
 
@@ -129,22 +135,21 @@ async def spawn_server(serverName=None, shardList=[], schema={"columns":["Stud_i
         try:
             await config_server(serverName, schema, shardList)
             app.logger.info(f"Configured {containerName}")
-            existing_shards = sql.query(f"SELECT Shard_id FROM MapT WHERE Is_primary = true")
+            res = sql.query(f"SELECT Shard_id FROM MapT WHERE Is_primary = true")
+            existing_shards = [r[0] for r in res]
             await restore_shards(serverName, [shard for shard in shardList if shard in existing_shards])
             app.logger.info(f"Restored shards for {containerName}")
 
             async with metadata_lock:
                 for shard in shardList:
-                    result=sql.query("SELECT * FROM MapT WHERE Shard_id=%s",(shard))
+                    result=sql.query(f"SELECT * FROM MapT WHERE Shard_id='{shard}'")
                     if len(result)==0:
                         sql.query("INSERT INTO MapT (Shard_id,Server_id,Is_primary) VALUES (%s,%s,%s)",(shard,serverId,True))
                     else:
                         sql.query("INSERT INTO MapT (Shard_id,Server_id,Is_primary) VALUES (%s,%s,%s)",(shard,serverId,False))
-                    sql.commit()
                     shard_hash_map[shard].addServer(serverId)
                 
                 sql.query("INSERT INTO ServerT (Server_id,Server_name) VALUES (%s,%s)",(serverId,serverName))
-                sql.commit()
 
             app.logger.info(f"Updated metadata for {containerName}")
         except Exception as e:
@@ -178,21 +183,15 @@ async def init():
     if len(shards) == 0:
         return jsonify({"message": "Invalid shards or servers", "status": "failure"}), 400
     
-    query = ""
-    for shard in shards:
-        query += f"INSERT INTO ShardT (Stud_id_low, Shard_id, Shard_size) VALUES ({shard['Stud_id_low']}, {shard['Shard_id']}, {shard['Shard_size']})"
-    sql.query(query)
-    sql.commit()
-
     spawned_servers = []
 
     # *2 would also work fine
     tasks = []
-    shards = shards*3
+    shards_copy = shards*3
     if not servers:
         for i in range(n):
-            nshards = len(shards)//n
-            tasks.append(spawn_server(None, shards[i:i+nshards], schema))
+            nshards = len(shards_copy)//n
+            tasks.append(spawn_server(None, shards_copy[i:i+nshards], schema))
         servers = {}
 
     for server, shardList in servers.items():
@@ -202,6 +201,10 @@ async def init():
     for result in results:
         if result[0]:
             spawned_servers.append(result[1])
+
+    for shard in shards:
+        sql.query("INSERT INTO ShardT (Stud_id_low, Shard_id, Shard_size) VALUES (%s, %s, %s)",
+                  (shard["Stud_id_low"], shard["Shard_id"], shard["Shard_size"]))
 
     if len(spawned_servers) == 0:
         return jsonify({"message": "No servers spawned", "status": "failure"}), 500
@@ -213,15 +216,16 @@ async def init():
 
 @app.route('/status', methods=['GET'])
 def status():
-    serverList = sql.query("SELECT Server_name FROM ServerT")
+    serverList = sql.query("SELECT * FROM ServerT")
     shardList = sql.query("SELECT * FROM ShardT")
     N = len(serverList)
     servers = {}
     for server in serverList:
-        servers[server] = sql.query(f"SELECT Shard_id FROM MapT WHERE Server_id={server}")
+        res = sql.query(f"SELECT Shard_id FROM MapT WHERE Server_id={server[0]}")
+        servers[server[1]] = [r[0] for r in res]
     shards = []
     for shard in shardList:
-        primary_server = sql.query(f"SELECT Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id={shard[1]} AND m.Is_primary = true")[0]
+        primary_server = sql.query(f"SELECT Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id='{shard[1]}' AND m.Is_primary = true")[0][0]
         shards.append({"Stud_id_low": shard[0], "Shard_id": shard[1], "Shard_size": shard[2], "Primary_server": primary_server})
     return jsonify({"N": N, "shards": shards, "servers": servers, "status": "success"}), 200
 
@@ -240,7 +244,8 @@ async def add_servers():
     if n!=len(servers):
         return jsonify*{"message": f"<Error> Number of new servers {n} is not equal to newly added instances {len(new_shards)}", "status": "failure"}, 400
     
-    serverList = sql.query("SELECT Server_name FROM ServerT")
+    res = sql.query("SELECT Server_name FROM ServerT")
+    serverList = [r[0] for r in res]
     for server in servers:
         if server in serverList:
             return jsonify(message=f"<ERROR> {server} already exists", status="failure"), 400
@@ -250,7 +255,6 @@ async def add_servers():
 
     for shardData in new_shards:
         sql.query("INSERT INTO ShardT (Stud_id_low,Shard_id,Shard_size) VALUES (%s,%s,%s)",(shardData["Stud_id_low"],shardData["Shard_id"],shardData["Shard_size"]))
-        sql.commit()
 
     spawned_servers = []
     tasks = []
@@ -273,14 +277,15 @@ async def add_servers():
 
 def remove_container(hostname):
     try:
-        serverId = sql.query(f"SELECT Server_id FROM ServerT WHERE Server_name={hostname}")[0]
-        shardList = sql.query(f"SELECT Shard_id FROM MapT WHERE Server_id={serverId}")
+        serverId = sql.query(f"SELECT Server_id FROM ServerT WHERE Server_name='{hostname}'")[0][0]
+        res = sql.query(f"SELECT Shard_id FROM MapT WHERE Server_id={serverId}")
+        shardList = [r[0] for r in res]
         for shard in shardList:
             shard_hash_map[shard].removeServer(serverId)
         available_servers.append(serverId)
         os.system(f"docker stop {hostname} && docker rm {hostname}")
-        sql.query(f"DELETE FROM ServerT WHERE Server_id={serverId}; DELETE FROM MapT WHERE Server_id={serverId};")
-        sql.commit()
+        sql.query(f"DELETE FROM ServerT WHERE Server_id={serverId}")
+        sql.query(f"DELETE FROM MapT WHERE Server_id={serverId}")
     except Exception as e:
         app.logger.error(f"<ERROR> {e} occurred while removing hostname={hostname}")
         raise e 
@@ -296,7 +301,8 @@ async def remove_servers():
     if not n or not servers or len(servers) > n:
         return jsonify({"message": "Invalid payload", "status": "failure"}), 400
 
-    serverList = sql.query("SELECT Server_name FROM ServerT")
+    res = sql.query("SELECT Server_name FROM ServerT")
+    serverList = [r[0] for r in res]
     for server in servers:
         if server not in serverList:
             return jsonify(message=f"<ERROR> {server} is not a valid server name", status="failure"), 400
@@ -307,21 +313,19 @@ async def remove_servers():
         if n > len(servers):
             random_servers = random.sample(serverList, n - len(servers))
             servers.extend(random_servers)
-        async with aiohttp.clientSession() as session:
-            tasks = []
-            for server in servers:
-                remove_container(hostname=server)
-                task = asyncio.create_task(session.put(f'http://shmgr:5000/primary_elect', payload={"server": server}))
-                tasks.append(task)
+        async with aiohttp.ClientSession() as session:
+            tasks = [asyncio.create_task(session.put(f'http://shmgr:5000/primary_elect', json={"server": server})) for server in servers]
             results = await asyncio.gather(*tasks, return_exceptions=True)
             for result, server in zip(results, servers):
                 if isinstance(result, Exception) or result.status != 200:
                     app.logger.error(f"Error while removing {server}: {result}")
                     return jsonify({"message": f"Error while removing {server}", "status": "failure"}), 500
+        for server in servers:
+            remove_container(server)
 
     except Exception as e:
         return jsonify(message=f"<ERROR> {e} occurred while removing", status="failure"), 400
-    remaining_servers = sql.query("SELECT COUNT(*) FROM ServerT")[0]
+    remaining_servers = sql.query("SELECT COUNT(*) FROM ServerT")[0][0]
     return jsonify({"message": {"N": remaining_servers, "servers": servers}, "status": "success"}), 200
 
 # from here not completely done
@@ -390,9 +394,9 @@ async def write():
                 tasks = []
                 #write to the server which is the primary one only
                 #find the Server_id of the primary server from MapT
-                query = "SELECT Server_id FROM MapT WHERE Is_primary = TRUE"
                 # Fetching the first result
-                server = sql.query(query)[0][0]
+                server = sql.query(
+                    "SELECT Server_id FROM MapT WHERE Is_primary = TRUE")[0][0]
                 # for server in shard_to_servers[shard]:
                 app.logger.info(f"Writing to {server} for shard {shard}")
                 payload = {"shard": shard,"data": data,"primary": True}
