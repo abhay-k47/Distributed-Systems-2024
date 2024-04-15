@@ -141,7 +141,7 @@ async def spawn_server(serverName=None, shardList=[], schema={"columns":["Stud_i
 
             async with metadata_lock:
                 for shard in shardList:
-                    sql.execute("USE test_db")
+                    sql.execute("USE MetaDB")
                     result=sql.query("SELECT * FROM mapT WHERE shard_id=%s",(shard))
                     if len(result)==0:
                         sql.query("INSERT INTO mapT (shard_id,server_id,is_primary) VALUES (%s,%s,%s)",(shard,serverId,True))
@@ -152,7 +152,7 @@ async def spawn_server(serverName=None, shardList=[], schema={"columns":["Stud_i
                     shard_to_servers.setdefault(shard, []).append(serverName)
                 # add to id_server_map serverId and serverName by creating connection ans using the db
                 
-                sql.query("USE test_db")
+                sql.query("USE MetaDB")
                 sql.query("INSERT INTO id_server_map (server_id,server_name) VALUES (%s,%s)",(serverId,serverName))
                 id_to_server[serverId] = serverName
                 server_to_id[serverName] = serverId
@@ -197,8 +197,8 @@ async def periodic_heatbeat_check(interval=2):
                     shardList.append(shard)
                     #remove server from MapT
                     
-                    #use test_db
-                    sql.query("USE test_db")
+                    #use MetaDB
+                    sql.query("USE MetaDB")
                     sql.query("DELETE FROM mapT WHERE server_id=%s",(server_to_id[serverName]))
                     shard_hash_map[shard].removeServer(server_to_id[serverName])
                 deadServerList.append(serverName)
@@ -230,8 +230,8 @@ async def init():
 
     shardT = shards
     #add the data into shardT table
-    #use test_db
-    sql.query("USE test_db")
+    #use MetaDB
+    sql.query("USE MetaDB")
     # insert in shardT
     for shard in shards:
         sql.query("INSERT INTO shardT (Stud_id_low,Shard_id,Shard_size) VALUES (%s,%s,%s)",(shard["Stud_id_low"],shard["Shard_id"],shard["Shard_size"]))
@@ -298,8 +298,8 @@ async def add_servers():
         shard_size = shardData["Shard_size"]
         # insert shardData into shardT
          
-        #use test_db
-        sql.query("USE test_db")
+        #use MetaDB
+        sql.query("USE MetaDB")
         # insert in shardT
         sql.query("INSERT INTO shardT (Stud_id_low,Shard_id,Shard_size) VALUES (%s,%s,%s)",(shardData["Stud_id_low"],shardData["Shard_id"],shardData["Shard_size"]))
         shardT.append(shardData)
@@ -330,7 +330,7 @@ def remove_container(hostname):
         shardList = servers_to_shard[hostname]
         for shard in shardList:
             # remove server from the mapT
-            sql.query("USE test_db")
+            sql.query("USE MetaDB")
             # delete the server from mapT
             sql.query("DELETE FROM mapT WHERE server_id=%s",(serverId))
             shard_hash_map[shard].removeServer(serverId)
@@ -338,7 +338,7 @@ def remove_container(hostname):
         available_servers.append(serverId)
         server_to_id.pop(hostname)
         id_to_server.pop(serverId)
-        sql.query("USE test_db")
+        sql.query("USE MetaDB")
         # delete from id_server_map where server id is serverId
         sql.query("DELETE FROM id_server_map WHERE server_id=%s",(serverId))
         os.system(f"docker stop {hostname} && docker rm {hostname}")
@@ -442,7 +442,7 @@ async def write():
                 tasks = []
                 #write to the server which is the primary one only
                
-                sql.query("USE test_db")
+                sql.query("USE MetaDB")
                 #find the server_id of the primary server from mapT
                 query = "SELECT server_id FROM mapT WHERE is_primary = TRUE"
                 # Fetching the first result
