@@ -328,46 +328,19 @@ async def remove_servers():
     remaining_servers = sql.query("SELECT COUNT(*) FROM ServerT")[0][0]
     return jsonify({"message": {"N": remaining_servers, "servers": servers}, "status": "success"}), 200
 
-# from here not completely done
-@app.route('/read', methods=['POST'])
-async def read():
-    payload = await request.get_json()
-    stud_id = payload.get("Stud_id")
-    if not stud_id:
-        return jsonify({"message": "Invalid payload", "status": "failure"}), 400
-    
-    low = stud_id.get("low")
-    high = stud_id.get("high")
 
-    if not low or not high:
-        return jsonify({"message": "Invalid payload", "status": "failure"}), 400
-    
-    lower_shard_index = bisect_right(prefix_shard_sizes, low)
-    upper_shard_index = bisect_left(prefix_shard_sizes, high+1)
-    lower_shard_index -= 1
-    shardIndex = lower_shard_index
-    shards_queried = [shard["Shard_id"] for shard in shardT[lower_shard_index:upper_shard_index]]
-    
-    data = []
+@app.route('/read/<serverName>', methods=['GET'])
+async def read(serverName):
 
-    for shard in shards_queried:
-        serverId = shard_hash_map[shard].getServer(random.randint(100000, 1000000))
-        server = id_to_server[serverId]
-        async with aiohttp.ClientSession() as session:
-            spayload = {"shard": shard , "Stud_id": {"low": max(low, prefix_shard_sizes[shardIndex]), "high": min(high, prefix_shard_sizes[shardIndex]+shardT[shardIndex]["Shard_size"]-1)}}
-            app.logger.info(f"Reading from {server} for shard {shard} with payload {spayload}")
-            async with session.post(f'http://{server}:5000/read', json=spayload) as resp:
-                if resp.status == 200:
-                    result = await resp.json()
-                    data.extend(result.get("data", []))
-                else:
-                    app.logger.error(f"Error while reading from {server} for shard {shard}")
-                    return jsonify({"message": "Error while reading", "status": "failure"}), 500
-
-            shardIndex += 1
-                
-    return jsonify({"shards_queried": shards_queried, "data": data, "status": "success"}), 200
-
+    async with aiohttp.ClientSession() as session:
+        serverId = sql.query(f"SELECT Server_id FROM ServerT WHERE Server_name='{serverName}'")[0][0]
+        shards = sql.query(f"SELECT Shard_id FROM MapT WHERE Server_id='{serverId}'")
+        shardList = [shard for [shard] in shards]
+        payload = {"shards": shardList}
+        async with session.get(f'http://{serverName}:5000/copy', json=payload) as resp:
+            result = await resp.json()
+            return jsonify(result), 200 if resp.status == 200 else 500
+        
 
 @app.route('/write', methods=['POST'])
 async def write():
@@ -378,39 +351,39 @@ async def write():
     
     shards_to_data = {}
 
-    # can be optimised instead of binary search, by sorting wrt to Stud_id
-    for record in data:
-        stud_id = record.get("Stud_id")
-        shardIndex = bisect_right(prefix_shard_sizes, stud_id)
-        if shardIndex == 0 or (shardIndex == len(prefix_shard_sizes) and stud_id >= prefix_shard_sizes[-1]+shardT[-1]["Shard_size"]):
-            return jsonify({"message": "Invalid Stud_id", "status": "failure"}), 400
-        shard = shardT[shardIndex-1]["Shard_id"]
-        shards_to_data[shard] = shards_to_data.get(shard, [])
-        shards_to_data[shard].append(record)
+    shardDetails = sql.query("SELECT Shard_id FROM ShardT")
+    shardDetails.sort(key=lambda x: x[0])
+    data.sort(key=lambda x: x["Stud_id"])
+
+    dataIndex = 0
+
+    for [Stud_id_low, Shard_id, Shard_size] in shardDetails:
+        shard = Shard_id
+        shards_to_data[shard] = []
+        while dataIndex < len(data) and (Stud_id_low <= data[dataIndex]["Stud_id"] < Stud_id_low + Shard_size):
+            shards_to_data[shard].append(data[dataIndex])
+            dataIndex += 1
     
     for shard, data in shards_to_data.items():
-        async with shard_write_lock[shard]:
-            async with aiohttp.ClientSession() as session:
-                tasks = []
-                #write to the server which is the primary one only
-                #find the Server_id of the primary server from MapT
-                # Fetching the first result
-                server = sql.query(
-                    "SELECT Server_id FROM MapT WHERE Is_primary = TRUE")[0][0]
-                # for server in shard_to_servers[shard]:
-                app.logger.info(f"Writing to {server} for shard {shard}")
-                payload = {"shard": shard,"data": data,"primary": True}
-                task = asyncio.create_task(session.post(f'http://{server}:5000/write', json=payload))
-                tasks.append(task)
-                results = await asyncio.gather(*tasks, return_exceptions=True)
-                for result in results:
-                    if isinstance(result, Exception):
-                        app.logger.error(f"Error while writing to {server} for shard {shard}, got exception {result}")
-                        return jsonify({"message": "Error while writing", "status": "failure"}), 500
-                    if result.status != 200:
-                        app.logger.error(f"Error while writing to {server} for shard {shard}, got status {result.status}")
-                        return jsonify({"message": "Error while writing", "status": "failure"}), 500
-                    
+        async with aiohttp.ClientSession() as session:
+            tasks = []
+            serverId = sql.query(f"SELECT Server_id FROM MapT WHERE Shard_id='{shard}' AND Is_primary = TRUE")[0][0]
+            server = sql.query(f"SELECT Server_name FROM ServerT WHERE Server_id={serverId}")[0][0]
+            app.logger.info(f"Writing to {server} for shard {shard}")
+            sec_server_list = sql.query(f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id='{shard}' AND m.Is_primary = FALSE")
+            sec_servers = [r[0] for r in sec_server_list]
+            payload = {"shard": shard,"data": data,"sec_servers": sec_servers}
+            task = asyncio.create_task(session.post(f'http://{server}:5000/write', json=payload))
+            tasks.append(task)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            for result in results:
+                if isinstance(result, Exception):
+                    app.logger.error(f"Error while writing to {server} for shard {shard}, got exception {result}")
+                    return jsonify({"message": "Error while writing", "status": "failure"}), 500
+                if result.status != 200:
+                    app.logger.error(f"Error while writing to {server} for shard {shard}, got status {result.status}")
+                    return jsonify({"message": "Error while writing", "status": "failure"}), 500
+                                    
     return jsonify({"message": f"{len(data)} Data entries added", "status": "success"}), 200
 
 @app.route('/update', methods=['PUT'])
@@ -427,28 +400,20 @@ async def update():
     if not stud_name and not stud_marks:
         return jsonify({"message": "Invalid payload", "status": "failure"}), 400
     
-    shardIndex = bisect_right(prefix_shard_sizes, stud_id)
-    shardIndex -= 1
+    shard = sql.query(f"SELECT Shard_id FROM ShardT WHERE Stud_id_low <= {stud_id} ORDER BY Stud_id_low DESC LIMIT 1")[0][0]
 
-    shard = shardT[shardIndex]["Shard_id"]
-
-    async with shard_write_lock[shard]:
-        async with aiohttp.ClientSession() as session:
-            tasks = []
-            for server in shard_to_servers[shard]:
-                payload = {"shard": shard, "Stud_id": stud_id, "data": data}
-                task = asyncio.create_task(session.put(f'http://{server}:5000/update', json=payload))
-                tasks.append(task)
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for result in results:
-                if isinstance(result, Exception):
-                    app.logger.error(f"Error while updating to {server} for shard {shard}, got exception {result}")
-                    return jsonify({"message": "Error while updating", "status": "failure"}), 500
-                if result.status != 200:
-                    app.logger.error(f"Error while updating to {server} for shard {shard}, got status {result.status}")
-                    return jsonify({"message": "Error while updating", "status": "failure"}), 500
-                
-    return jsonify({"message": f"Data entry for Stud_id: {stud_id} updated", "status": "success"}), 200
+    async with aiohttp.ClientSession() as session:
+        serverId = sql.query(f"SELECT Server_id FROM MapT WHERE Shard_id='{shard}' AND Is_primary = TRUE")[0][0]
+        server = sql.query(f"SELECT Server_name FROM ServerT WHERE Server_id={serverId}")[0][0]
+        sec_servers_list = sql.query(f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id='{shard}' AND m.Is_primary = FALSE")
+        sec_servers = [r[0] for r in sec_servers_list]
+        payload = {"shard": shard, "data": data, "sec_servers": sec_servers}
+        async with session.put(f'http://{server}:5000/update', json=payload) as resp:
+            if resp.status != 200:
+                app.logger.error(f"Error while updating to {server} for shard {shard}, got status {resp.status}")
+                return jsonify({"message": "Error while updating", "status": "failure"}), 500
+            
+            return jsonify({"message": f"Data entry for Stud_id: {stud_id} updated", "status": "success"}), 200
 
 @app.route('/del', methods=['DELETE'])
 async def delete():
@@ -457,28 +422,20 @@ async def delete():
     if not stud_id:
         return jsonify({"message": "Invalid payload", "status": "failure"}), 400
     
-    shardIndex = bisect_right(prefix_shard_sizes, stud_id)
-    shardIndex -= 1
+    shard = sql.query(f"SELECT Shard_id FROM ShardT WHERE Stud_id_low <= {stud_id} ORDER BY Stud_id_low DESC LIMIT 1")[0][0]
 
-    shard = shardT[shardIndex]["Shard_id"]
-
-    async with shard_write_lock[shard]:
-        async with aiohttp.ClientSession() as session:
-            tasks = []
-            for server in shard_to_servers[shard]:
-                payload = {"shard": shard, "Stud_id": stud_id}
-                task = asyncio.create_task(session.delete(f'http://{server}:5000/del', json=payload))
-                tasks.append(task)
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for result in results:
-                if isinstance(result, Exception):
-                    app.logger.error(f"Error while deleting to {server} for shard {shard}, got exception {result}")
-                    return jsonify({"message": "Error while deleting", "status": "failure"}), 500
-                if result.status != 200:
-                    app.logger.error(f"Error while deleting to {server} for shard {shard}, got status {result.status}")
-                    return jsonify({"message": "Error while deleting", "status": "failure"}), 500
-                
-    return jsonify({"message": f"Data entry with Stud_id: {stud_id} removed from all replicas", "status": "success"}), 200
+    async with aiohttp.ClientSession() as session:
+        serverId = sql.query(f"SELECT Server_id FROM MapT WHERE Shard_id='{shard}' AND Is_primary = TRUE")[0][0]
+        server = sql.query(f"SELECT Server_name FROM ServerT WHERE Server_id={serverId}")[0][0]
+        sec_servers_list = sql.query(f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id='{shard}' AND m.Is_primary = FALSE")
+        sec_servers = [r[0] for r in sec_servers_list]
+        payload = {"shard": shard, "Stud_id": stud_id, "sec_servers": sec_servers}
+        async with session.delete(f'http://{server}:5000/del', json=payload) as resp:
+            if resp.status != 200:
+                app.logger.error(f"Error while deleting from {server} for shard {shard}, got status {resp.status}")
+                return jsonify({"message": "Error while deleting", "status": "failure"}), 500
+            
+            return jsonify({"message": f"Data entry for Stud_id: {stud_id} deleted", "status": "success"}), 200
 
 @app.before_serving
 async def startup():
