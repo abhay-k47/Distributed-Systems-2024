@@ -168,7 +168,7 @@ async def check_heartbeat(serverName, log=True):
         return False
 
 
-async def periodic_heatbeat_check(interval=60):
+async def periodic_heatbeat_check(interval=3):
     app.logger.info("Starting periodic heartbeat check")
     while True:
         res = sql.query("SELECT Server_name FROM ServerT")

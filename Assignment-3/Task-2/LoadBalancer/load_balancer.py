@@ -351,7 +351,7 @@ async def write():
     
     shards_to_data = {}
 
-    shardDetails = sql.query("SELECT Shard_id FROM ShardT")
+    shardDetails = sql.query("SELECT * FROM ShardT")
     shardDetails.sort(key=lambda x: x[0])
     data.sort(key=lambda x: x["Stud_id"])
 
@@ -381,7 +381,8 @@ async def write():
                     app.logger.error(f"Error while writing to {server} for shard {shard}, got exception {result}")
                     return jsonify({"message": "Error while writing", "status": "failure"}), 500
                 if result.status != 200:
-                    app.logger.error(f"Error while writing to {server} for shard {shard}, got status {result.status}")
+                    json_result = await result.json()
+                    app.logger.error(f"Error while writing to {server} for shard {shard}, got status {result.status}, message {json_result}")
                     return jsonify({"message": "Error while writing", "status": "failure"}), 500
                                     
     return jsonify({"message": f"{len(data)} Data entries added", "status": "success"}), 200
