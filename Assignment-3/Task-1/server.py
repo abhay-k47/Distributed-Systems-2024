@@ -1,13 +1,15 @@
+import logging.config
 from flask import Flask, jsonify, request
 from mysql.connector.errors import Error
 from SQLHandler import SQLHandler
 import os
 import asyncio 
 import aiohttp
-
+import logging
 app = Flask(__name__)
 sql = SQLHandler()
 server_name = os.environ['SERVER_NAME']
+logging.basicConfig(level=logging.DEBUG)
 
 # secondary_servers = {}
 seqNo = 0
@@ -137,7 +139,7 @@ async def write_primary(shard, data, secondary_servers):
     for result in results:
         if not isinstance(result, Exception) and result.status == 200:
             cnt += 1
-    if cnt <= len(secondary_servers)/2:
+    if cnt < len(secondary_servers)/2:
         seqNo -= 1
         WAL.pop()
         return jsonify({"message": "Error while writing", "status": "failure"}), 500
@@ -207,7 +209,8 @@ async def write_data():
 
     shard = payload.get('shard')
     data = payload.get('data')
-    secondary_servers = payload.get('sec_servers', None)
+    secondary_servers = payload.get('sec_servers', [])
+    primary_WAL=payload.get("WAL", None)
 
     if not shard or not data:
         return jsonify({"message": "Invalid payload", "status": "error"}), 400
@@ -215,14 +218,15 @@ async def write_data():
     if not sql.hasDB(dbname=shard):
         return jsonify({"message": f"{server_name}:{shard} not found", "status": "error"}), 404
 
-    if secondary_servers:   #if primary server
+    if not primary_WAL:   #if primary server
         return await write_primary(shard=shard, data=data, secondary_servers=secondary_servers)
     else:
-        return handle_secondary(shard=shard, data=data, primary_WAL=payload.get("WAL"))
+        return handle_secondary(shard=shard, data=data, primary_WAL=primary_WAL)
            
 async def update_primary(shard, data, secondary_servers):
 
     # First adding in log
+    global seqNo
     WAL = all_WAL[shard]
     seqNo += 1
     WAL.append({"seqNo" : seqNo, "type" : "update", "data" : data})
@@ -237,7 +241,7 @@ async def update_primary(shard, data, secondary_servers):
     for result in results:
         if not isinstance(result, Exception) and result.status == 200:
             cnt += 1
-    if cnt <= len(secondary_servers)/2:
+    if cnt < len(secondary_servers)/2:
         seqNo -= 1
         WAL.pop()
         return jsonify({"message": "Error while updating", "status": "failure"}), 500
@@ -268,7 +272,8 @@ async def update_data():
 
     shard = payload.get('shard')
     data = payload.get('data')
-    secondary_servers = payload.get('sec_servers', None)
+    secondary_servers = payload.get('sec_servers', [])
+    primary_WAL=payload.get("WAL", None)
 
     if not shard or data.get("Stud_id", None) is None or not data:
         return jsonify({"message": "Invalid payload", "status": "error"}), 400
@@ -276,14 +281,15 @@ async def update_data():
     if not sql.hasDB(dbname=shard):
         return jsonify({"message": f"{server_name}:{shard} not found", "status": "error"}), 404
 
-    if secondary_servers:   #if primary server
+    if not primary_WAL:   #if primary server
         return await update_primary(shard=shard, data=data, secondary_servers=secondary_servers)
     else:
-        return handle_secondary(shard=shard, data=data, primary_WAL=payload.get("WAL"))
+        return handle_secondary(shard=shard, data=data, primary_WAL=primary_WAL)
 
 async def del_primary(shard, data, secondary_servers):
     
     # First adding in log
+    global seqNo
     WAL = all_WAL[shard]
     seqNo += 1
     WAL.append({"seqNo" : seqNo, "type" : "delete", "data" : data})
@@ -298,7 +304,7 @@ async def del_primary(shard, data, secondary_servers):
     for result in results:
         if not isinstance(result, Exception) and result.status == 200:
             cnt += 1
-    if cnt <= len(secondary_servers)/2:
+    if cnt < len(secondary_servers)/2:
         seqNo -= 1
         WAL.pop()
         return jsonify({"message": "Error while deleting", "status": "failure"}), 500
@@ -328,7 +334,8 @@ async def delete_data():
 
     shard = payload.get('shard')
     Stud_id = payload.get('Stud_id')
-    secondary_servers = payload.get('sec_servers', None)
+    secondary_servers = payload.get('sec_servers', [])
+    primary_WAL=payload.get("WAL", None)
 
     if not shard or Stud_id is None:
         return jsonify({"message": "Invalid payload", "status": "error"}), 400
@@ -336,10 +343,10 @@ async def delete_data():
     if not sql.hasDB(dbname=shard):
         return jsonify({"message": f"{server_name}:{shard} not found", "status": "error"}), 404
 
-    if secondary_servers:   #if primary server
+    if not primary_WAL:   #if primary server
         return await del_primary(shard=shard, data={"Stud_id" : Stud_id}, secondary_servers=secondary_servers)
     else:
-        return handle_secondary(shard=shard, data={"Stud_id" : Stud_id}, primary_WAL=payload.get("WAL"))
+        return handle_secondary(shard=shard, data={"Stud_id" : Stud_id}, primary_WAL=primary_WAL)
 
 # @app.route('/setSecondary', methods=['POST'])
 # def set_secondary_servers():
