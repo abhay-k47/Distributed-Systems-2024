@@ -4,10 +4,12 @@ from SQLHandler import SQLHandler
 import os
 import asyncio 
 import aiohttp
+import logging
 
 app = Flask(__name__)
 sql = SQLHandler()
 server_name = os.environ['SERVER_NAME']
+logging.basicConfig(level=logging.DEBUG)
 
 # secondary_servers = {}
 seqNo = 0
@@ -137,6 +139,8 @@ async def write_primary(shard, data, secondary_servers):
     for result in results:
         if not isinstance(result, Exception) and result.status == 200:
             cnt += 1
+        else:
+            app.logger.error(f"Error while writing to secondary server: {result}")
     if cnt <= len(secondary_servers)/2:
         seqNo -= 1
         WAL.pop()

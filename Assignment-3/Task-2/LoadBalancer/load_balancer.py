@@ -329,6 +329,43 @@ async def remove_servers():
     return jsonify({"message": {"N": remaining_servers, "servers": servers}, "status": "success"}), 200
 
 
+@app.route('/read', methods=['POST'])
+async def read_post():
+    payload = await request.get_json()
+    stud_id = payload.get("Stud_id")
+    if not stud_id:
+        return jsonify({"message": "Invalid payload", "status": "failure"}), 400
+    
+    low = stud_id.get("low")
+    high = stud_id.get("high")
+
+    if not low or not high:
+        return jsonify({"message": "Invalid payload", "status": "failure"}), 400
+    
+    shards_queried = []
+    shard_bounds = {}
+    
+    shard_details = sql.query(f"SELECT * FROM ShardT WHERE Stud_id_low <= {high} AND Stud_id_low + Shard_size - 1 >= {low}")
+    for [Stud_id_low, Shard_id, Shard_size] in shard_details:
+        shards_queried.append(Shard_id)
+        shard_bounds[Shard_id] = [max(Stud_id_low, low), min(Stud_id_low + Shard_size - 1, high)]
+    data = []
+
+    for shard in shards_queried:
+        server = sql.query(f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id='{shard}' AND m.Is_primary = TRUE")[0][0]
+        async with aiohttp.ClientSession() as session:
+            spayload = {"shard": shard, "Stud_id": {"low": shard_bounds[shard][0], "high": shard_bounds[shard][1]}}
+            app.logger.info(f"Reading from {server} for shard {shard} with payload {spayload}")
+            async with session.post(f'http://{server}:5000/read', json=spayload) as resp:
+                if resp.status == 200:
+                    result = await resp.json()
+                    data.extend(result.get("data", []))
+                else:
+                    app.logger.error(f"Error while reading from {server} for shard {shard}")
+                    return jsonify({"message": "Error while reading", "status": "failure"}), 500
+                
+    return jsonify({"shards_queried": shards_queried, "data": data, "status": "success"}), 200
+
 @app.route('/read/<serverName>', methods=['GET'])
 async def read(serverName):
 
@@ -372,6 +409,7 @@ async def write():
             app.logger.info(f"Writing to {server} for shard {shard}")
             sec_server_list = sql.query(f"SELECT s.Server_name FROM MapT m JOIN ServerT s ON m.Server_id=s.Server_id WHERE m.Shard_id='{shard}' AND m.Is_primary = FALSE")
             sec_servers = [r[0] for r in sec_server_list]
+            app.logger.info(f"Data to be written to {server} for shard {shard}: {data}, sec_servers: {sec_servers}")
             payload = {"shard": shard,"data": data,"sec_servers": sec_servers}
             task = asyncio.create_task(session.post(f'http://{server}:5000/write', json=payload))
             tasks.append(task)
