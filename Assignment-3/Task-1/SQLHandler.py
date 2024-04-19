@@ -91,6 +91,9 @@ class SQLHandler:
             f"UPDATE {table_name} SET {format} WHERE {col}={val}", values)
 
     def Insert(self, table_name, rows):
+        if not rows:
+            return
+        
         schema = self.query(f"DESCRIBE {table_name}")
         schema = [col[0] for col in schema]
 

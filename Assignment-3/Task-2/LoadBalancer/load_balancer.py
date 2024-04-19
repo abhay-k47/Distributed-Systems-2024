@@ -40,7 +40,6 @@ class SQLHandler:
         res = cursor.fetchall()
         cursor.close()
         self.mydb.commit()
-        app.logger.info(f"Query: {sql} returned {res}")
         return res
 
     def close(self):

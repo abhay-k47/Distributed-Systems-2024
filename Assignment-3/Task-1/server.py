@@ -3,14 +3,13 @@ from flask import Flask, jsonify, request
 from mysql.connector.errors import Error
 from SQLHandler import SQLHandler
 import os
-import asyncio 
+import asyncio
 import aiohttp
 import logging
 
 app = Flask(__name__)
 sql = SQLHandler()
 server_name = os.environ['SERVER_NAME']
-logging.basicConfig(level=logging.DEBUG)
 logging.basicConfig(level=logging.DEBUG)
 
 # secondary_servers = {}
@@ -25,13 +24,15 @@ Schema for individual WAL: List of dicts (Logs which are not commited by atleast
     }
 '''
 
+
 @app.route('/get_wal', methods=['GET'])
 def get_WAL():
     payload = request.get_json()
     shard = payload.get('shard')
     if shard not in all_WAL:
         return jsonify({"message": "Invalid shard", "status": "error"}), 400
-    return jsonify({"WAL" : all_WAL[shard], "status" : "success"}), 200
+    return jsonify({"WAL": all_WAL[shard], "status": "success"}), 200
+
 
 @app.route('/set_wal', methods=['POST'])
 def set_WAL():
@@ -43,13 +44,15 @@ def set_WAL():
     all_WAL[shard] = WAL
     return '', 200
 
+
 @app.route('/get_seq', methods=['GET'])
 def get_seqNo():            # returns latest seqNo for a particular shard, used for leader election
     payload = request.get_json()
     shard = payload.get('shard')
     if shard not in all_WAL:
         return jsonify({"message": "Invalid shard", "status": "error"}), 400
-    return jsonify({"seq" : seqNo, "status" : "success"}), 200
+    return jsonify({"seq": seqNo, "status": "success"}), 200
+
 
 @app.route('/config', methods=['POST'])
 def configure_server():
@@ -87,7 +90,7 @@ def copy_data():
 
     shards = payload.get('shards')
 
-    if not shards:
+    if shards is None:
         return jsonify({"message": "Invalid payload", "status": "error"}), 400
 
     response_data = {}
@@ -123,31 +126,34 @@ def read_data():
 
     return jsonify(response_data), 200
 
+
 async def write_primary(shard, data, secondary_servers):
-    
+
     global seqNo
     # First adding in log
     WAL = all_WAL[shard]
     seqNo += 1
-    WAL.append({"seqNo" : seqNo, "type" : "write", "data" : data})
+    WAL.append({"seqNo": seqNo, "type": "write", "data": data})
 
     results = []
     async with aiohttp.ClientSession() as session:
         tasks = []
         for server in secondary_servers:
-            tasks.append(asyncio.create_task(session.post(f'http://{server}:5000/write', json={"shard" : shard, "data" : data, "WAL" : WAL})))
+            tasks.append(asyncio.create_task(session.post(
+                f'http://{server}:5000/write', json={"shard": shard, "data": data, "WAL": WAL})))
         results = await asyncio.gather(*tasks, return_exceptions=True)
     cnt = 0
     for result in results:
         if not isinstance(result, Exception) and result.status == 200:
             cnt += 1
         else:
-            app.logger.error(f"Error while writing to secondary server: {result}")
+            app.logger.error(
+                f"Error while writing to secondary server: {result}")
     if cnt < len(secondary_servers)/2:
         seqNo -= 1
         WAL.pop()
         return jsonify({"message": "Error while writing", "status": "failure"}), 500
-    
+
     # Writing as majority secondary servers have commited
     try:
         sql.UseDB(dbname=shard)
@@ -162,8 +168,9 @@ async def write_primary(shard, data, secondary_servers):
 
     return jsonify(response_data), 200
 
+
 def handle_secondary(shard, data, primary_WAL):
-    
+
     global seqNo
     WAL = all_WAL[shard]
     # Removing checkpointed entries from WAL
@@ -178,7 +185,7 @@ def handle_secondary(shard, data, primary_WAL):
     # Logging and commiting new entries
     sql.UseDB(dbname=shard)
     for i, log in enumerate(primary_WAL):
-        if WAL[-1]["seqNo"] == log["seqNo"]:
+        if len(WAL) == 0 or WAL[-1]["seqNo"] == log["seqNo"]:
             for j, new_log in enumerate(primary_WAL, start=i+1):
                 WAL.append(new_log)
                 data = new_log["data"]
@@ -189,22 +196,25 @@ def handle_secondary(shard, data, primary_WAL):
                         if not sql.Exists(table_name='studT', col="Stud_id", val=data["Stud_id"]):
                             WAL.pop()
                             return jsonify({"message": f"Error during commiting log: {new_log}\nData entry for Stud_id:{data['Stud_id']} not found", "status": "error"}), 404
-                        sql.Update(table_name="studT", col="Stud_id", val=data["Stud_id"], data=data)
+                        sql.Update(table_name="studT", col="Stud_id",
+                                   val=data["Stud_id"], data=data)
                     else:
                         if not sql.Exists(table_name='studT', col="Stud_id", val=data["Stud_id"]):
                             WAL.pop()
                             return jsonify({"message": f"Error during commiting log: {new_log}\nData entry for Stud_id:{data['Stud_id']} not found", "status": "error"}), 404
-                        sql.Delete(table_name='studT', col="Stud_id", val=data["Stud_id"])
-                
+                        sql.Delete(table_name='studT',
+                                   col="Stud_id", val=data["Stud_id"])
+
                 except Exception as e:
                     WAL.pop()
                     return jsonify({"message": f"Error: {e}", "status": "failure"}), 500
 
-    #updating seqNo
-    seqNo =  WAL[-1]["seqNo"]
+    # updating seqNo
+    seqNo = WAL[-1]["seqNo"]
     response_data = {"checkpointed": WAL[0]["seqNo"]-1,
                      "status": "success"}
-    return jsonify(response_data), 200 
+    return jsonify(response_data), 200
+
 
 @app.route('/write', methods=['POST'])
 async def write_data():
@@ -214,32 +224,34 @@ async def write_data():
     shard = payload.get('shard')
     data = payload.get('data')
     secondary_servers = payload.get('sec_servers', [])
-    primary_WAL=payload.get("WAL", None)
+    primary_WAL = payload.get("WAL")
 
-    if not shard or not data:
+    if not shard or data is None:
         return jsonify({"message": "Invalid payload", "status": "error"}), 400
 
     if not sql.hasDB(dbname=shard):
         return jsonify({"message": f"{server_name}:{shard} not found", "status": "error"}), 404
 
-    if not primary_WAL:   #if primary server
+    if primary_WAL is None:  # if primary server
         return await write_primary(shard=shard, data=data, secondary_servers=secondary_servers)
     else:
         return handle_secondary(shard=shard, data=data, primary_WAL=primary_WAL)
-           
+
+
 async def update_primary(shard, data, secondary_servers):
 
     # First adding in log
     global seqNo
     WAL = all_WAL[shard]
     seqNo += 1
-    WAL.append({"seqNo" : seqNo, "type" : "update", "data" : data})
+    WAL.append({"seqNo": seqNo, "type": "update", "data": data})
 
     results = []
     async with aiohttp.ClientSession() as session:
         tasks = []
         for server in secondary_servers:
-            tasks.append(asyncio.create_task(session.post(f'http://{server}:5000/update', json={"shard" : shard, "data" : data, "WAL" : WAL})))
+            tasks.append(asyncio.create_task(session.put(
+                f'http://{server}:5000/update', json={"shard": shard, "data": data, "WAL": WAL})))
         results = await asyncio.gather(*tasks, return_exceptions=True)
     cnt = 0
     for result in results:
@@ -249,7 +261,7 @@ async def update_primary(shard, data, secondary_servers):
         seqNo -= 1
         WAL.pop()
         return jsonify({"message": "Error while updating", "status": "failure"}), 500
-    
+
     # Updating as majority secondary servers have commited
     try:
         sql.UseDB(dbname=shard)
@@ -257,8 +269,9 @@ async def update_primary(shard, data, secondary_servers):
             seqNo -= 1
             WAL.pop()
             return jsonify({"message": f"Data entry for Stud_id:{data['Stud_id']} not found", "status": "error"}), 404
-        sql.Update(table_name='studT', col="Stud_id", val=data["Stud_id"], data=data)
-    
+        sql.Update(table_name='studT', col="Stud_id",
+                   val=data["Stud_id"], data=data)
+
     except Exception as e:
         seqNo -= 1
         WAL.pop()
@@ -269,6 +282,7 @@ async def update_primary(shard, data, secondary_servers):
 
     return jsonify(response_data), 200
 
+
 @app.route('/update', methods=['PUT'])
 async def update_data():
 
@@ -277,32 +291,34 @@ async def update_data():
     shard = payload.get('shard')
     data = payload.get('data')
     secondary_servers = payload.get('sec_servers', [])
-    primary_WAL=payload.get("WAL", None)
+    primary_WAL = payload.get("WAL")
 
-    if not shard or data.get("Stud_id", None) is None or not data:
+    if not shard or not data or 'Stud_id' not in data:
         return jsonify({"message": "Invalid payload", "status": "error"}), 400
 
     if not sql.hasDB(dbname=shard):
         return jsonify({"message": f"{server_name}:{shard} not found", "status": "error"}), 404
 
-    if not primary_WAL:   #if primary server
+    if primary_WAL is None:  # if primary server
         return await update_primary(shard=shard, data=data, secondary_servers=secondary_servers)
     else:
         return handle_secondary(shard=shard, data=data, primary_WAL=primary_WAL)
 
+
 async def del_primary(shard, data, secondary_servers):
-    
+
     # First adding in log
     global seqNo
     WAL = all_WAL[shard]
     seqNo += 1
-    WAL.append({"seqNo" : seqNo, "type" : "delete", "data" : data})
+    WAL.append({"seqNo": seqNo, "type": "delete", "data": data})
 
     results = []
     async with aiohttp.ClientSession() as session:
         tasks = []
         for server in secondary_servers:
-            tasks.append(asyncio.create_task(session.post(f'http://{server}:5000/del', json={"shard" : shard, "Stud_id" : data["Stud_id"], "WAL" : WAL})))
+            tasks.append(asyncio.create_task(session.delete(
+                f'http://{server}:5000/del', json={"shard": shard, "Stud_id": data["Stud_id"], "WAL": WAL})))
         results = await asyncio.gather(*tasks, return_exceptions=True)
     cnt = 0
     for result in results:
@@ -312,7 +328,7 @@ async def del_primary(shard, data, secondary_servers):
         seqNo -= 1
         WAL.pop()
         return jsonify({"message": "Error while deleting", "status": "failure"}), 500
-    
+
     # Deleting as majority secondary servers have commited
     try:
         sql.UseDB(dbname=shard)
@@ -332,6 +348,7 @@ async def del_primary(shard, data, secondary_servers):
 
     return jsonify(response_data), 200
 
+
 @app.route('/del', methods=['DELETE'])
 async def delete_data():
     payload = request.get_json()
@@ -339,7 +356,7 @@ async def delete_data():
     shard = payload.get('shard')
     Stud_id = payload.get('Stud_id')
     secondary_servers = payload.get('sec_servers', [])
-    primary_WAL=payload.get("WAL", None)
+    primary_WAL = payload.get("WAL")
 
     if not shard or Stud_id is None:
         return jsonify({"message": "Invalid payload", "status": "error"}), 400
@@ -347,22 +364,10 @@ async def delete_data():
     if not sql.hasDB(dbname=shard):
         return jsonify({"message": f"{server_name}:{shard} not found", "status": "error"}), 404
 
-    if not primary_WAL:   #if primary server
-        return await del_primary(shard=shard, data={"Stud_id" : Stud_id}, secondary_servers=secondary_servers)
+    if primary_WAL is None:  # if primary server
+        return await del_primary(shard=shard, data={"Stud_id": Stud_id}, secondary_servers=secondary_servers)
     else:
-        return handle_secondary(shard=shard, data={"Stud_id" : Stud_id}, primary_WAL=primary_WAL)
-
-# @app.route('/setSecondary', methods=['POST'])
-# def set_secondary_servers():
-#     payload = request.get_json()
-#     shard = payload.get("shard")
-#     sec_servers = payload.get("sec_servers")
-
-#     if shard is None or sec_servers is None:
-#         return jsonify({"message": "Invalid payload", "status": "error"}), 400
-    
-#     secondary_servers[shard] = sec_servers
-#     return '', 200
+        return handle_secondary(shard=shard, data={"Stud_id": Stud_id}, primary_WAL=primary_WAL)
 
 
 @app.errorhandler(Exception)

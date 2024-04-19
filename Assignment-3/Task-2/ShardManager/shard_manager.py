@@ -36,7 +36,6 @@ class SQLHandler:
         res = cursor.fetchall()
         cursor.close()
         self.mydb.commit()
-        app.logger.debug(f"Query: {sql} returned {res}")
         return res
 
     def close(self):
@@ -168,7 +167,7 @@ async def check_heartbeat(serverName, log=True):
         return False
 
 
-async def periodic_heatbeat_check(interval=3):
+async def periodic_heatbeat_check(interval=60):
     app.logger.info("Starting periodic heartbeat check")
     while True:
         res = sql.query("SELECT Server_name FROM ServerT")
