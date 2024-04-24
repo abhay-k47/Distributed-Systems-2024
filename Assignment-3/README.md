@@ -116,6 +116,10 @@ i       it writes the data in its database.
 
 ![A3_mean_write_time](./Task-3/A3_mean_write_time.png)
 
+- Standard deviation read time:
+  
 ![A3_error_read_time](./Task-3/A3_error_read_time.png)
+
+- Standard deviation write time:
 
 ![A3_error_write_time](./Task-3/A3_error_write_time.png)
