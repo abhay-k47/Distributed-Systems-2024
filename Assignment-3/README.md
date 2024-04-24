@@ -12,17 +12,21 @@
 - The server is now running on the specified port
 
 - Server endpoints that have been modified are
-  - `/write, method=POST`
+    - `/write, method=POST`
         -  For secondary servers, this endpoint makes changes in the log and then writes data
-        entries in a shard in a particular server container and for Primary server it first makes changes to its log, then send
-        write request to other servers where same shard is present, once it gets confirmation from other secondary servers then
-        it writes the data in its database. 
-  - `/update, method=PUT`
-        - This endpoint updates a particular data entry in a shard in a particular server
-        container.  
-  - `/del, method=DELETE`
-        -  This endpoint deletes a particular data entry (based on Stud id) in a shard in a
-        particular server container. 
+        entries in a shard in a particular server container.
+        - For Primary server it first makes changes to its log, then send
+        write request to other servers where same shard is present.
+        - Once it gets confirmation from other secondary servers then
+i       it writes the data in its database.
+     
+   - `/update, method=PUT`
+        -  This endpoint updates a particular data entry in a shard in a particular server
+        container. 
+        
+   - `/del, method=DELETE`
+        -   This endpoint deletes a particular data entry (based on Stud id) in a shard in a
+        particular server container.  
 
 ## Task-2: Load Balancer
 - Run `make build` from `Assignment-3` to build the server and load balancer images.
@@ -40,8 +44,10 @@
           increasing client numbers in the system.
     - `/rm, method=DELETE`
         -  This endpoint removes server instances in the load balancer to scale down with
-        decreasing client or system maintenance. The endpoint expects a JSON payload that mentions the number of instances
-        to be removed and their preferred server names in a list. If Primary server for a shard is removed then also the Shard
+        decreasing client or system maintenance. 
+        - The endpoint expects a JSON payload that mentions the number of instances
+        to be removed and their preferred server names in a list. 
+        - If Primary server for a shard is removed then also the Shard
         Manager should trigger the Primary selection from available servers for that shard.
     - `/read, method=GET`
         - Based on the consistent hashing algorithm, this endpoint reads data entries from the
