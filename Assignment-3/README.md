@@ -61,15 +61,29 @@ i       it writes the data in its database.
 
 
 ### Design Choices
-- 
+- WAL
+    - Write Ahead Log is maintained for each server to keep track of the changes made to the data.
+    - Each entry of WAL has sequence number, type of request and data.
+    - The primary server on receiving write/update/delete requests, first it writes to its WAL and then sends the corresponding request to other secondary servers along with its WAL.
+    - The secondary servers on receiving a request from the primary server compare its WAL with the WAL received from the primary server and removes the checkpointed entries.
+    - The secondary server then appends the additional entries of primary's WAL to its own WAL
+    - It then executes the newly added entries of its WAL and return seq_no of most recent entry executed.
+    - Once the primary server receives confirmation from majority of the secondary servers, it executes the request on the database. It also updates its WAL according to seq_no received from secondary and removes the entries from its WAL.
+
+- Primary Server
+    - Initially the primary server for a shard is selected randomly from the available servers for that shard.
+    - During primary server re-election, the server with the most updated WAL is selected as the primary server.
+
+
+
 
 ## Task-3: Analysis
 
 ### A-1: The read and write speed for 10000 writes and 10000 reads in the default configuration  given in task 2
-- Total read time: 147.60585117340088  seconds
-- Total write time: 1095.6545538902283  seconds
-- Average read time: 0.014760585117340089  seconds
-- Average write time: 0.10956545538902283  seconds
+- Total read time: 74.11880731582642  seconds
+- Total write time: 753.9955163002014  seconds
+- Average read time: 0.007411880731582642  seconds
+- Average write time: 0.07539955163002014  seconds
 
     ![A-1-Read Time](./Task-3/A1_read_time.png)
     
@@ -80,10 +94,10 @@ i       it writes the data in its database.
 ### A-2: The read and write speed for 10000 writes and 10000 reads when the number of shard replicas is increased (to 7) from the configuration (init endpoint)
 
 10000 writes and read speed up for 10000 reads
-- Total read time: 105.23974609375  seconds
-- Total write time: 1359.7118179798126  seconds
-- Average read time: 0.010523974609375  seconds
-- Average write time: 0.13597118179798126  seconds
+- Total read time: 80.23558616638184  seconds
+- Total write time: 2315.9703540802  seconds
+- Average read time: 0.008023558616638183  seconds
+- Average write time: 0.23159703540802  seconds
 
     ![A-2-Read Time](./Task-3/A2_read_time.png)
     

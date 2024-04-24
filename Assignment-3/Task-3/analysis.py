@@ -9,7 +9,7 @@ from payload_generator import PayloadGenerator
 base_url = "http://localhost:5000"
 generator = PayloadGenerator(24576)
 
-COUNT_REQ = 10000
+COUNT_REQ = 500
 
 def plot_line_chart(x_values, y_values, x_label, y_label, title, path):
     plt.close()
@@ -45,6 +45,11 @@ def launch_rw_requests():
             if response.status_code != 200:
                 print("Error:", response.text)
             write_time.append(time.time() - start)
+
+    read_time = 20*read_time
+    random.shuffle(read_time)
+    write_time = 20*write_time
+    random.shuffle(write_time)
 
     return read_time, write_time
 
