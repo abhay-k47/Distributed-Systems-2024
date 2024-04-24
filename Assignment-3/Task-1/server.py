@@ -129,11 +129,12 @@ def read_data():
 
 async def write_primary(shard, data, secondary_servers):
 
-    global seqNo
+    global seqNo, all_WAL
     # First adding in log
     WAL = all_WAL[shard]
     seqNo += 1
     WAL.append({"seqNo": seqNo, "type": "write", "data": data})
+    app.logger.debug(f"Updated primary WAL:{WAL}")
 
     results = []
     async with aiohttp.ClientSession() as session:
@@ -152,16 +153,17 @@ async def write_primary(shard, data, secondary_servers):
     if cnt < len(secondary_servers)/2:
         seqNo -= 1
         WAL.pop()
-        return jsonify({"message": "Error while writing", "status": "failure"}), 500
+        return jsonify({"message": "Error while writing in secondary servers", "status": "failure"}), 500
 
     # Writing as majority secondary servers have commited
     try:
         sql.UseDB(dbname=shard)
         sql.Insert(table_name='studT', rows=data)
     except Exception as e:
+        app.logger.error(f"Error occured while inserting: {e}")
         seqNo -= 1
         WAL.pop()
-        return jsonify({"message": f"Error: {e}", "status": "failure"}), 500
+        return jsonify({"message": f"Error: {e} in primary", "status": "failure"}), 500
 
     response_data = {"message": "Data entries added",
                      "status": "success"}
@@ -171,7 +173,7 @@ async def write_primary(shard, data, secondary_servers):
 
 def handle_secondary(shard, data, primary_WAL):
 
-    global seqNo
+    global seqNo, all_WAL
     WAL = all_WAL[shard]
     # Removing checkpointed entries from WAL
     idx = 0
@@ -180,14 +182,18 @@ def handle_secondary(shard, data, primary_WAL):
             break
         else:
             idx += 1
-    WAL = WAL[idx:] if idx > 0 else WAL
+    all_WAL[shard] = WAL[idx:] if idx > 0 else WAL
+    WAL = all_WAL[shard]
+    app.logger.debug(f"Updated WAL after removing checkpointed entries: {WAL}")
 
     # Logging and commiting new entries
     sql.UseDB(dbname=shard)
     for i, log in enumerate(primary_WAL):
-        if len(WAL) == 0 or WAL[-1]["seqNo"] == log["seqNo"]:
-            for j, new_log in enumerate(primary_WAL, start=i+1):
+        if len(WAL) == 0 or WAL[-1]["seqNo"] < log["seqNo"]:
+            primary_WAL = primary_WAL[i:]
+            for new_log in primary_WAL:
                 WAL.append(new_log)
+                app.logger.debug(f"Updated WAL: {WAL}")
                 data = new_log["data"]
                 try:
                     if new_log["type"] == "write":
@@ -208,6 +214,7 @@ def handle_secondary(shard, data, primary_WAL):
                 except Exception as e:
                     WAL.pop()
                     return jsonify({"message": f"Error: {e}", "status": "failure"}), 500
+            break
 
     # updating seqNo
     seqNo = WAL[-1]["seqNo"]
@@ -241,7 +248,7 @@ async def write_data():
 async def update_primary(shard, data, secondary_servers):
 
     # First adding in log
-    global seqNo
+    global seqNo, all_WAL
     WAL = all_WAL[shard]
     seqNo += 1
     WAL.append({"seqNo": seqNo, "type": "update", "data": data})
@@ -308,7 +315,7 @@ async def update_data():
 async def del_primary(shard, data, secondary_servers):
 
     # First adding in log
-    global seqNo
+    global seqNo, all_WAL
     WAL = all_WAL[shard]
     seqNo += 1
     WAL.append({"seqNo": seqNo, "type": "delete", "data": data})
