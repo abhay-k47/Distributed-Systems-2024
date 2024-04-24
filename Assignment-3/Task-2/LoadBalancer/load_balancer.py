@@ -399,7 +399,10 @@ async def write():
         while dataIndex < len(data) and (Stud_id_low <= data[dataIndex]["Stud_id"] < Stud_id_low + Shard_size):
             shards_to_data[shard].append(data[dataIndex])
             dataIndex += 1
-    
+        if len(shards_to_data[shard]) == 0:
+            del shards_to_data[shard]
+
+    total_len = 0
     for shard, data in shards_to_data.items():
         async with aiohttp.ClientSession() as session:
             tasks = []
@@ -410,6 +413,7 @@ async def write():
             sec_servers = [r[0] for r in sec_server_list]
             app.logger.info(f"Data to be written to {server} for shard {shard}: {data}, sec_servers: {sec_servers}")
             payload = {"shard": shard,"data": data,"sec_servers": sec_servers}
+            app.logger.info(f"Payload: {payload}")
             task = asyncio.create_task(session.post(f'http://{server}:5000/write', json=payload))
             tasks.append(task)
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -421,8 +425,9 @@ async def write():
                     json_result = await result.json()
                     app.logger.error(f"Error while writing to {server} for shard {shard}, got status {result.status}, message {json_result}")
                     return jsonify({"message": "Error while writing", "status": "failure"}), 500
-                                    
-    return jsonify({"message": f"{len(data)} Data entries added", "status": "success"}), 200
+            total_len += len(data)
+
+    return jsonify({"message": f"{total_len} Data entries added", "status": "success"}), 200
 
 @app.route('/update', methods=['PUT'])
 async def update():
