@@ -61,6 +61,6 @@ However, Parallel writing to different shards, for instance, shard (i) and shard
 ## Contributors
 
 - Abhay Kumar Keshari (20CS10001) [[abhay-k47](https://github.com/abhay-k47)]
-- Morreddigari Likhith Reddy (20CS10037) [[likhnic](https://github.com/likhnic)]
+- Morreddigari Likhith Reddy (20CS10037) [[likhnic](https://github.com/likhnic), [FreeGuy1612](https://github.com/FreeGuy1612)]
 - Shivansh Shukla (20CS10057) [[shivansh1102](https://github.com/shivansh1102)]
 - Abhijeet Singh (20CS30001) [[abhijeetsingh13](https://github.com/abhijeetsingh13)]
